@@ -1,0 +1,45 @@
+-- :name seed-test-document-headers! :!
+INSERT INTO document_header
+(id, context, name, type, state, current_version,
+ date_created, date_last_modified)
+VALUES
+('34a79262-f324-4911-ac33-8bb62f020d09'::uuid, '008dc16e-f7d9-45ce-a043-e482919561c1'::uuid,
+ 'Foo', '143246e3-c0b7-59e3-ae17-29b99ff0d5ac'::uuid, 'posted',
+ 'ea06354b4d2594116a3ab44a0033bf4b643715a2',
+ NOW(), NOW()),
+('60053ded-32e9-48ee-b6b1-d546b3c071b3'::uuid, '008dc16e-f7d9-45ce-a043-e482919561c1'::uuid,
+ 'type/TestDoc', '143246e3-c0b7-59e3-ae17-29b99ff0d5ac'::uuid, 'posted',
+ 'cff5ae93b8c74e0dcc4abf226f78c28b026610e2',
+ NOW(), NOW()),
+('1ececa2b-0bae-478f-80f4-a291deaf2186'::uuid, '008dc16e-f7d9-45ce-a043-e482919561c1'::uuid,
+ 'type/TestDocWithRef', '143246e3-c0b7-59e3-ae17-29b99ff0d5ac'::uuid, 'posted',
+ '9c7bb7e2ec219b71f89e9106d123bc3723f33d60',
+ NOW(), NOW());
+
+-- :name seed-test-documents! :!
+INSERT INTO document
+(id, document, version)
+VALUES
+('34a79262-f324-4911-ac33-8bb62f020d09'::uuid,
+ '{"name":"::string"}',
+ 'ea06354b4d2594116a3ab44a0033bf4b643715a2'),
+('60053ded-32e9-48ee-b6b1-d546b3c071b3'::uuid,
+ '{"definition": {"id": "::string", "name": "::string", "inner": [{"name": "::string", "value": "::integer"}]}}',
+ 'cff5ae93b8c74e0dcc4abf226f78c28b026610e2'),
+('1ececa2b-0bae-478f-80f4-a291deaf2186'::uuid,
+ '{"definition": {"id": "::string", "name": "::string", "referred": "TestDoc"}}',
+ '9c7bb7e2ec219b71f89e9106d123bc3723f33d60');
+
+-- :name clear-test-documents! :!
+DELETE FROM document
+WHERE id IN (
+  '34a79262-f324-4911-ac33-8bb62f020d09'::uuid,
+  '60053ded-32e9-48ee-b6b1-d546b3c071b3'::uuid
+);
+
+-- :name clear-test-document-headers! :!
+DELETE FROM document_header
+WHERE id IN (
+  '34a79262-f324-4911-ac33-8bb62f020d09'::uuid,
+  '60053ded-32e9-48ee-b6b1-d546b3c071b3'::uuid
+);
