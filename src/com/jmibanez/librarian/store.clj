@@ -57,7 +57,8 @@
 (def TransactionState (s/enum :started
                               :dirty
                               :committed
-                              :cancelled))
+                              :cancelled
+                              :conflict))
 
 (s/defrecord Transaction [id             :- Id
                           context        :- Context
@@ -74,6 +75,7 @@
 (def StoreEventType (s/enum :transaction-start
                             :transaction-commit
                             :transaction-cancel
+                            :transaction-conflict
                             :document-write))
 (s/defschema StoreEvent {:event   StoreEventType
                          :context Context
@@ -114,23 +116,49 @@
                              :payload transaction})
      transaction)))
 
+(declare cancel-transaction-reaper!)
 (declare cas-transaction-state!)
 (s/defn commit-transaction! :- Transaction
   [transaction :- Transaction]
   (tufte/p
    ::commit-transaction!
    (let [transaction-id  (:id transaction)
-         new-transaction (assoc transaction :state :committed)]
+         param           {:transaction-id transaction-id}
+
+         conflict (assoc transaction :state :conflict)
+         committed (assoc transaction :state :committed)]
 
      (>!! *_events-channel* {:event   :transaction-commit
                              :context (:context transaction)
                              :payload transaction})
 
      (jdbc/with-db-transaction [c config/*datasource*]
-       (if (cas-transaction-state! new-transaction :committed
-                                   #(contains? #{:started :dirty} %))
-         (commit-transaction-details! c {:transaction-id transaction-id}))
-       new-transaction))))
+
+       ;; Verify if we should be able to proceed
+       (let [{:keys [applicable_num
+                     total_num]}
+             (select-applicable-count-in-transaction c param)]
+
+         (if-not (= applicable_num
+                    total_num)
+           ;; Conflict due to concurrent transaction
+           (do
+             (cas-transaction-state! transaction :conflict
+                                     identity)
+             (debug "Conflict:" transaction-id
+                    "applicable " applicable_num "!= total " total_num)
+             conflict)
+
+           (if-not (cas-transaction-state! transaction :committed
+                                           #(contains? #{:started :dirty} %))
+             ;; State unexpected; yield conflict
+             conflict
+
+             ;; Success case
+             (do
+               (cancel-transaction-reaper! committed)
+               (commit-transaction-details! c param)
+               committed))))))))
 
 (declare cancel-transaction-reaper!)
 (declare reap-transaction!)

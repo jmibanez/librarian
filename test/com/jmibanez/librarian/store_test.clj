@@ -198,3 +198,38 @@
                                       seeds/test-doc-id
                                       "XXX"))))
 
+
+;; Should be ok on first of two concurrent transactions
+(expect {:state :committed}
+        (in (let [tx1 (sut/start-transaction! seeds/test-context)
+                  tx2 (sut/start-transaction! seeds/test-context)]
+              (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                       seeds/test-doc-id)
+                    new-doc1 (assoc-in doc-record [:document :age]
+                                       "::integer")
+                    new-doc2 (assoc-in doc-record [:document :age]
+                                       "::string")]
+                (sut/write-document! tx1 new-doc1)
+                (sut/write-document! tx2 new-doc2)
+
+                (let [new-tx1
+                      (sut/commit-transaction! tx1)]
+                  (sut/commit-transaction! tx2)
+                  new-tx1)))))
+
+;; Should trigger transaction conflict on second of two concurrent
+;; transactions
+(expect {:state :conflict}
+        (in (let [tx1 (sut/start-transaction! seeds/test-context)
+                  tx2 (sut/start-transaction! seeds/test-context)]
+              (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                       seeds/test-doc-id)
+                    new-doc1 (assoc-in doc-record [:document :age]
+                                       "::integer")
+                    new-doc2 (assoc-in doc-record [:document :age]
+                                       "::string")]
+                (sut/write-document! tx1 new-doc1)
+                (sut/write-document! tx2 new-doc2)
+
+                (sut/commit-transaction! tx1)
+                (sut/commit-transaction! tx2)))))

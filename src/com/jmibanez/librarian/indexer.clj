@@ -105,6 +105,8 @@
       ;; FIXME: Remove index entries
       true
 
+      :transaction-conflict
+      true
 
       nil
       false)))

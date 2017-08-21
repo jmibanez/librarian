@@ -45,6 +45,58 @@ SET
   last_operation = NOW()
 WHERE id = :id;
 
+-- :name select-applicable-count-in-transaction :? :1
+WITH transaction_docs AS (
+    SELECT
+      h.id,
+      h.current_version,
+      h.state,
+      d.previous AS expected_version,
+      d.version AS new_version,
+      COALESCE(t_state.new_state, h.state) AS new_state
+    FROM
+      document_header h
+    JOIN
+      document d
+      ON
+        h.id = d.id
+    LEFT JOIN
+      transaction_document_item t_doc
+      ON
+        t_doc.document_id = d.id
+        AND t_doc.version = d.version
+    LEFT JOIN
+      transaction_document_state_item t_state
+      ON
+        t_state.document_id = d.id
+        AND t_state.version = d.version
+    JOIN
+      transaction_stub t_stub
+      ON
+        t_doc.transaction_id = t_stub.id
+        OR t_state.transaction_id = t_stub.id
+    WHERE
+      t_stub.id = :transaction-id
+), applicable AS (
+   SELECT
+     COUNT(1) num
+   FROM
+     transaction_docs t_doc
+   WHERE
+     t_doc.current_version = t_doc.expected_version
+     OR (t_doc.current_version IS NULL AND t_doc.expected_version IS NULL)
+), total AS (
+   SELECT
+     COUNT(1) num
+   FROM
+     transaction_docs t_doc
+)
+SELECT
+  total.num AS total_num,
+  applicable.num AS applicable_num
+FROM
+  total, applicable
+
 -- :name commit-transaction-details! :! :n
 UPDATE
   document_header
