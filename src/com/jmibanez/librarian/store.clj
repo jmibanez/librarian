@@ -142,7 +142,7 @@
                             :context (:context transaction)
                             :payload transaction})
     (cancel-transaction-reaper! transaction)
-    (reap-transaction! Transaction)
+    (reap-transaction! transaction)
     new-transaction))
 
 
