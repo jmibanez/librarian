@@ -14,7 +14,7 @@
             [clojure.core.async :refer [chan close! go
                                         go-loop thread
                                         >!! >! <!! <!! <!
-                                        alts!
+                                        alts! tap untap
                                         sliding-buffer]]
             [com.jmibanez.librarian
              [config :as config]
@@ -27,29 +27,26 @@
 
 (declare start-indexer!
          stop-indexer!)
-(defstate indexer
-  :start (start-indexer!)
-  :stop  (stop-indexer!))
 
+(defstate indexer-chan
+  :start (start-indexer!)
+  :stop  (stop-indexer! indexer-chan))
+
+(defstate indexer
+  :start (agent [])
+  :stop  nil)
 
 (declare create-document-index
          run-indexer)
 
-(defn add-document-to-index [state-map context transaction document]
-  (let [tx-id     (:id transaction)
-        state-key [context tx-id]
-        new-state (if (nil? (get state-map state-key))
-                    (assoc state-map state-key [document])
-                    (update state-map state-key conj document))]
+(defn add-document-to-index [index-queue doc]
+  (if (= (count index-queue)
+         config/indexer-batch-size)
+    ;; Flush work queue
+    (send-off indexer
+              run-indexer))
 
-
-    (if (= (count (get state-map state-key))
-           config/indexer-batch-size)
-      ;; Flush work queue
-      (send-off indexer
-                run-indexer context transaction))
-
-    new-state))
+  (spy :debug (conj index-queue doc)))
 
 
 (defn create-index-for-documents [doc-set]
@@ -67,77 +64,63 @@
          (ensure-values! c idx-row)
          (insert-indexes! c idx-row))))))
 
-(defn run-indexer [state-map context transaction]
-  (let [tx-id     (:id transaction)
-        state-key [context tx-id]]
+(defn run-indexer [index-queue]
+  (info "Indexer has awoken...")
+  (if (<= (count index-queue)
+          config/indexer-batch-size)
+    (spy :debug (create-index-for-documents index-queue))
 
-    (if-let [doc-set (get state-map state-key)]
-      (do
-        (if (<= (count doc-set)
-                config/indexer-batch-size)
-          (spy :debug (create-index-for-documents doc-set))
-
-          ;; Split into batches
-          (tufte/p
-           ::index-batch
-           (doseq [batch (partition config/indexer-batch-size
-                                    doc-set)]
-             (info "Indexing batch of " (count batch))
-             (spy :debug (create-index-for-documents batch)))))
-
-        (dissoc state-map state-key))
-
-      ;; Bail with warning if transaction not found in state
-      (do
-        (warn "Transaction" tx-id "not found in indexer state; ignoring")
-        state-map))))
+    ;; Split into batches
+    (tufte/p
+     ::index-batch
+     (doseq [batch (partition config/indexer-batch-size
+                              index-queue)]
+       (info "Indexing batch of " (count batch))
+       (spy :debug (create-index-for-documents batch)))))
+  [])
 
 
 (defstate indexer-alive
   :start true
   :stop  false)
 
-(defn add-index-job [[context transaction] doc-list-ref
-                     prev-doc-list new-doc-list]
-  (let [[old-docs new-docs all-docs] (data/diff prev-doc-list
-                                                new-doc-list)]
-    (doseq [document (filter #(not (nil? %)) new-docs)]
-      (if-not (nil? document)
-        (send-off indexer
-                  add-document-to-index context transaction document)))))
+(defn dispatch-store-event [ev]
+  (let [{:keys [event context payload]} ev]
+    (debug "Event!" ev)
+    (case event
+      :document-write
+      (do
+        (send-off indexer add-document-to-index payload)
+        true)
 
-(defn indexer-watcher [_ store-state-ref
-                       prev-store-state new-store-state]
-  (let [[_ transactions _] (data/diff prev-store-state
-                                      new-store-state)]
-    (doseq [[tx-id tx-state-diff] transactions]
-      (if-not (nil? tx-state-diff)
-        (let [{transaction :transaction
-               context     :context
-               tx-docs     :documents} (get new-store-state tx-id)]
-          (condp = (:state transaction)
-            :committed
-            (do
-              (send-off indexer
-                        run-indexer context transaction)
-              (remove-watch tx-docs [context transaction]))
+      :transaction-start
+      true
 
-            :cancelled
-            (remove-watch tx-docs [context transaction])
+      :transaction-commit
+      (do
+        (send-off indexer run-indexer)
+        true)
 
-            :started
-            (do
-              (send-off indexer assoc [context tx-id] [])
-              (add-watch tx-docs [context transaction] add-index-job))
+      :transaction-cancel
+      ;; FIXME: Remove index entries
+      true
 
-            nil))))))
+
+      nil
+      false)))
 
 (defn start-indexer! []
-  (add-watch store/store-state ::indexer indexer-watcher)
-  (agent {}))
+  (let [store-events (chan)]
+    (tap store/*events* store-events)
+    (go-loop [ev (<! store-events)]
+      (if (dispatch-store-event ev)
+        (recur (<! store-events))))
 
-(defn stop-indexer! []
-  (remove-watch store/store-state ::indexer))
+    (info "Indexer started.")
+    store-events))
+
+(defn stop-indexer! [indexer-chan]
+  (untap store/*events* indexer-chan))
 
 ;; (def index-type #uuid "1092c705-e1f8-4260-b6db-50e46d136ce5")
 ;; (def index-type-name "index")

@@ -6,7 +6,7 @@
             [clojure.core.cache :as cache]
             [clojure.core.async :refer [chan close! go thread
                                         >!! >! <!! <!
-                                        sliding-buffer]]
+                                        mult sliding-buffer]]
             [overtone.at-at :as at-at]
             [digest]
             [camel-snake-kebab.core :refer [->kebab-case]]
@@ -70,7 +70,23 @@
 
 (def reaper (agent {}))
 
-(def store-state (ref {}))
+
+(def StoreEventType (s/enum :transaction-start
+                            :transaction-commit
+                            :transaction-cancel
+                            :document-write))
+(s/defschema StoreEvent {:event   StoreEventType
+                         :context Context
+                         :payload s/Any})
+
+(defstate ^:dynamic *_events-channel*
+  :start (-> config/event-buffer-size
+             (sliding-buffer)
+             (chan))
+  :stop  (close! *_events-channel*))
+
+(defstate ^:dynamic *events*
+  :start (mult *_events-channel*))
 
 (hugsql/def-db-fns "sql/core.sql")
 
@@ -80,7 +96,7 @@
 (def default-transaction-timeout 5000)
 
 
-(declare schedule-transaction-reaper)
+(declare schedule-transaction-reaper!)
 (declare create-db-transaction-row!)
 (s/defn start-transaction! :- Transaction
   ([context    :- Context]
@@ -92,11 +108,10 @@
          transaction    (create-db-transaction-row! context
                                                     transaction-id
                                                     timeout)]
-     ;; Update transaction state
-     (dosync
-      (alter store-state assoc transaction-id {:transaction transaction
-                                               :context context-id
-                                               :documents   (ref [])}))
+     (schedule-transaction-reaper! transaction)
+     (>!! *_events-channel* {:event   :transaction-start
+                             :context context
+                             :payload transaction})
      transaction)))
 
 (declare cas-transaction-state!)
@@ -104,30 +119,35 @@
   [transaction :- Transaction]
   (tufte/p
    ::commit-transaction!
-   (dosync
-    (let [transaction-id  (:id transaction)
-          new-transaction (assoc transaction :state :committed)
-          tx-docs         (get-in @store-state [transaction-id :documents])]
-      (alter store-state assoc-in [transaction-id :transaction] new-transaction)
-      (ref-set tx-docs [])
-      new-transaction))))
+   (let [transaction-id  (:id transaction)
+         new-transaction (assoc transaction :state :committed)]
+
+     (>!! *_events-channel* {:event   :transaction-commit
+                             :context (:context transaction)
+                             :payload transaction})
+
+     (jdbc/with-db-transaction [c config/*datasource*]
+       (if (cas-transaction-state! new-transaction :committed
+                                   #(contains? #{:started :dirty} %))
+         (commit-transaction-details! c {:transaction-id transaction-id}))
+       new-transaction))))
 
 (declare cancel-transaction-reaper!)
 (declare reap-transaction!)
 (s/defn cancel-transaction! :- Transaction
   [transaction :- Transaction]
-  (dosync
-   (cancel-transaction-reaper! transaction)
-   (let [transaction-id  (:id transaction)
-         new-transaction (assoc transaction :state :cancelled)
-         tx-docs         (get-in @store-state [transaction-id :documents])]
-     (alter store-state assoc-in [transaction-id :transaction] new-transaction)
-     (ref-set tx-docs [])
-     new-transaction)))
+  (let [transaction-id  (:id transaction)
+        new-transaction (assoc transaction :state :cancelled)]
+    (>!! *_events-channel* {:event   :transaction-cancel
+                            :context (:context transaction)
+                            :payload transaction})
+    (cancel-transaction-reaper! transaction)
+    (reap-transaction! Transaction)
+    new-transaction))
 
 
-(defmacro with-transaction [[transaction-sym context-id] & body]
-  `(let [~transaction-sym (start-transaction! ~context-id)]
+(defmacro with-transaction [[transaction-sym context] & body]
+  `(let [~transaction-sym (start-transaction! ~context)]
      (try
        ~@body
        (catch Exception e
@@ -145,34 +165,30 @@
    document    :- Document]
   (tufte/p
    ::write-document!
-   (let [document
-         (jdbc/with-db-transaction [c config/*datasource*]
-           (if (cas-transaction-state! transaction :dirty
-                                       #(contains? #{:started :dirty} %))
-             (let [header (ensure-doc-header c document)
-                   doc (:document document)
-                   prev-version (current-doc-version c transaction document)
-                   doc-version (digest/sha-256 (json/generate-string doc))
-                   doc-version-row (insert-document-version!
-                                    c {:id       (:id document)
-                                       :document doc
-                                       :previous prev-version
-                                       :version  doc-version})
-                   document (assoc document :version doc-version)]
-               (bind-document-version-to-tx! c {:transaction-id   (:id transaction)
-                                                :document-id      (:id document)
-                                                :version          doc-version})
+   (jdbc/with-db-transaction [c config/*datasource*]
+     (if (cas-transaction-state! transaction :dirty
+                                 #(contains? #{:started :dirty} %))
+       (let [header (ensure-doc-header c document)
+             doc (:document document)
+             prev-version (current-doc-version c transaction document)
+             doc-version (digest/sha-256 (json/generate-string doc))
+             doc-version-row (insert-document-version!
+                              c {:id       (:id document)
+                                 :document doc
+                                 :previous prev-version
+                                 :version  doc-version})
+             document (assoc document :version doc-version)]
+         (bind-document-version-to-tx! c {:transaction-id   (:id transaction)
+                                          :document-id      (:id document)
+                                          :version          doc-version})
 
-               document)
+         (>!! *_events-channel* {:event   :document-write
+                                 :context (:context transaction)
+                                 :payload document})
+         document)
 
-             ;; FIXME: Raise exception: Invalid transaction state
-             nil))]
-     (dosync
-      (let [transaction-id (:id transaction)
-            tx-docs        (get-in @store-state [transaction-id :documents])]
-        (alter tx-docs conj document)))
-
-     document)))
+       ;; FIXME: Raise exception: Invalid transaction state
+       nil))))
 
 (s/defn set-document-state! :- Document
   [transaction :- Transaction
@@ -293,43 +309,6 @@
                                  :timeout timeout
                                  :state   :started}))))
 
-(defn- document-writer [_ document-list-ref
-                        prev-doc-list new-doc-list]
-  (let [[_ new-documents _] (data/diff prev-doc-list
-                                       new-doc-list)]
-    (debug "Should write new documents here:"
-           (vec (filter #(not (nil? %)) new-documents)))))
-
-(defn- transaction-watcher [_ store-state-ref
-                            prev-store-state new-store-state]
-  (let [[_ transactions _] (data/diff prev-store-state
-                                      new-store-state)]
-    (doseq [[tx-id tx-state-diff] transactions]
-      (if-not (nil? tx-state-diff)
-        (let [{transaction :transaction
-               context     :context
-               tx-docs     :documents} (get new-store-state tx-id)]
-          (condp = (:state transaction)
-            :committed
-            (jdbc/with-db-transaction [c config/*datasource*]
-              (if (cas-transaction-state! (spy :debug transaction) :committed
-                                          #(contains? #{:started :dirty} %))
-                (commit-transaction-details! c {:transaction-id tx-id}))
-              (remove-watch tx-docs ::doc-writer)
-              transaction)
-
-            :cancelled
-            (do
-              (reap-transaction! transaction)
-              (remove-watch tx-docs ::doc-writer))
-
-            :started
-            (add-watch tx-docs ::doc-writer document-writer)
-
-            nil))))))
-(add-watch store-state ::transaction-watcher transaction-watcher)
-
-
 (defcacheable get-document-header [c doc-id]
   (cache/lu-cache-factory {})
   (select-document-header c {:id doc-id}))
@@ -411,4 +390,3 @@
 
       (clear-transaction-documents! c transaction)
       (clear-transaction-state-updates! c transaction))))
-
