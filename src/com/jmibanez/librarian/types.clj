@@ -135,70 +135,70 @@
    "::uuid"    s/Uuid
    "::any"     s/Any})
 
-(defn create-type-context [context-id]
+(defn create-type-context [context]
   (swap! type-schemas
-         assoc context-id (agent {})))
+         assoc context (agent {})))
 
-(defn destroy-type-context [context-id]
+(defn destroy-type-context [context]
   (swap! type-schemas
-         dissoc context-id))
+         dissoc context))
 
-(defn create-type-schema-references-for-context [context-id]
-  (send type-schema-references assoc context-id {}))
+(defn create-type-schema-references-for-context [context]
+  (send type-schema-references assoc context {}))
 
-(defn destroy-type-schema-references-for-context [context-id]
-  (send type-schema-references dissoc context-id))
+(defn destroy-type-schema-references-for-context [context]
+  (send type-schema-references dissoc context))
 
-(defn bind-type-in-context [context-id type-name schema-def]
-  (let [type-context (get @type-schemas context-id)]
+(defn bind-type-in-context [context type-name schema-def]
+  (let [type-context (get @type-schemas context)]
     (send type-context assoc type-name schema-def)))
 
-(defn add-type-reference [context-id type-name
+(defn add-type-reference [context type-name
                           referring-type-name]
-  (if-let [ref-list (get-in @type-schema-references [context-id
+  (if-let [ref-list (get-in @type-schema-references [context
                                                      type-name])]
     (send ref-list conj referring-type-name)
     (send type-schema-references assoc-in
-          [context-id type-name] (agent []))))
+          [context type-name] (agent []))))
 
 (declare compile-type-definition)
-(defn resolve-type-ref [context-id type-name]
-  (let [type-context (get @type-schemas context-id)]
+(defn resolve-type-ref [context type-name]
+  (let [type-context (get @type-schemas context)]
     (if-let [core-schema-def (get core-schema-types type-name)]
       core-schema-def
 
       (if-let [schema-def (get @type-context type-name)]
         schema-def
-        (compile-type-definition context-id type-name)))))
+        (compile-type-definition context type-name)))))
 
 (defmulti compile-type-def
-  (fn [context-id this-type-name definition]
+  (fn [context this-type-name definition]
     (type definition)))
 
 (defmethod compile-type-def
   String
-  [context-id this-type-name ref-type-name]
-  (add-type-reference context-id ref-type-name this-type-name)
-  (resolve-type-ref context-id ref-type-name))
+  [context this-type-name ref-type-name]
+  (add-type-reference context ref-type-name this-type-name)
+  (resolve-type-ref context ref-type-name))
 
 
 (defmulti compile-type-sequence
-  (fn [context-id this-type-name
+  (fn [context this-type-name
        type-sequence-head type-sequence-rest]
     type-sequence-head))
 
 (defmethod compile-type-sequence
   "enum:"
-  [context-id this-type-name
+  [context this-type-name
    _ enum-values]
   (apply s/enum enum-values))
 
 (defmethod compile-type-sequence
   "conditional:"
-  [context-id this-type-name
+  [context this-type-name
    _ condition-tuples]
   (let [pairs (for [[key schema] condition-tuples]
-                (let [rhs (compile-type-def context-id this-type-name
+                (let [rhs (compile-type-def context this-type-name
                                             schema)
                       lhs (if (nil? key)
                             :else
@@ -209,11 +209,11 @@
 (defmethod compile-type-sequence
   :default
 
-  [context-id this-type-name
+  [context this-type-name
    type-sequence-head
    type-sequence-rest]
 
-  (let [compiler (partial compile-type-def context-id
+  (let [compiler (partial compile-type-def context
                           this-type-name)]
     (if (contains? sequence-keys type-sequence-head)
       (let [key-fn (get sequence-keys type-sequence-head)]
@@ -226,8 +226,8 @@
 (declare create-conditional)
 (defmethod compile-type-def
   clojure.lang.PersistentVector
-  [context-id this-type-name type-sequence]
-  (let [compiler (partial compile-type-def context-id
+  [context this-type-name type-sequence]
+  (let [compiler (partial compile-type-def context
                           this-type-name)
         first-elem (first type-sequence)]
 
@@ -251,10 +251,10 @@
             ;; ... is a conditional/one-of rule (depends on key of
             ;; first element)
             (= "conditional:" first-elem)
-            (create-conditional context-id this-type-name (rest type-sequence))
+            (create-conditional context this-type-name (rest type-sequence))
 
             (= "recursive:" first-elem)
-            (apply s/recursive (compile-type-definition context-id
+            (apply s/recursive (compile-type-definition context
                                                         this-type-name
                                                         (rest type-sequence)))))
 
@@ -263,31 +263,31 @@
 
 (defmethod compile-type-def
   clojure.lang.APersistentMap
-  [context-id this-type-name definition]
+  [context this-type-name definition]
   (into {} (for [[k v] definition]
              [(keyword k) ;; ensure keys are keywords
-              (compile-type-def context-id this-type-name v)])))
+              (compile-type-def context this-type-name v)])))
 (prefer-method compile-type-def
                clojure.lang.APersistentMap
                clojure.lang.ISeq)
 
 
-(defn invalidate-type-refs [context-id ref-list]
+(defn invalidate-type-refs [context ref-list]
   (for [ref ref-list]
-    (compile-type-definition context-id ref))
+    (compile-type-definition context ref))
   [])
 
-(defn invalidate-type [context-id type-name]
-  (let [type-context (get @type-schemas context-id)]
+(defn invalidate-type [context type-name]
+  (let [type-context (get @type-schemas context)]
     (send type-context dissoc type-name)))
 
-(defn compile-type-definition [context-id type-name]
-  (let [type-def (find-type-by-name context-id type-name)
-        schema-def (compile-type-def context-id
+(defn compile-type-definition [context type-name]
+  (let [type-def (find-type-by-name context type-name)
+        schema-def (compile-type-def context
                                      type-name
                                      (:definition type-def))]
-    (bind-type-in-context context-id type-name schema-def)
-    (if-let [ref-list (get-in @type-schema-references [context-id
+    (bind-type-in-context context type-name schema-def)
+    (if-let [ref-list (get-in @type-schema-references [context
                                                        type-name])]
       (send ref-list invalidate-type-refs))
     schema-def))

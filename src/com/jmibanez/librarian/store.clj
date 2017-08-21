@@ -83,13 +83,13 @@
 (declare schedule-transaction-reaper)
 (declare create-db-transaction-row!)
 (s/defn start-transaction! :- Transaction
-  ([context-id :- Context]
-   (start-transaction! context-id default-transaction-timeout))
+  ([context    :- Context]
+   (start-transaction! context default-transaction-timeout))
 
-  ([context-id :- Context
+  ([context    :- Context
     timeout    :- s/Int]
    (let [transaction-id (uuid/v4)
-         transaction    (create-db-transaction-row! context-id
+         transaction    (create-db-transaction-row! context
                                                     transaction-id
                                                     timeout)]
      ;; Update transaction state
@@ -285,11 +285,11 @@
 
 (add-encoder java.util.UUID encode-str)
 
-(defn create-db-transaction-row! [context-id transaction-id timeout]
+(defn create-db-transaction-row! [context transaction-id timeout]
   (jdbc/with-db-transaction [c config/*datasource*]
     (stub-row->Transaction
      (insert-transaction-row! c {:id transaction-id
-                                 :context context-id
+                                 :context context
                                  :timeout timeout
                                  :state   :started}))))
 
@@ -307,7 +307,7 @@
     (doseq [[tx-id tx-state-diff] transactions]
       (if-not (nil? tx-state-diff)
         (let [{transaction :transaction
-               context-id  :context
+               context     :context
                tx-docs     :documents} (get new-store-state tx-id)]
           (condp = (:state transaction)
             :committed
