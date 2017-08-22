@@ -239,7 +239,7 @@
              (select-recent-document-by-id c {:context context
                                               :id id})]
       (doc-row->Document doc-row)
-      (warn "Unknown document or document could not be retrieved:" id))))
+      (debug "Unknown document or document could not be retrieved:" id))))
 
 (s/defn get-document-by-name :- (s/maybe Document)
   [context :- Context
@@ -251,7 +251,7 @@
              (select-recent-document-by-name c {:context context
                                                 :name name})]
       (doc-row->Document doc-row)
-      (warn "Unknown document or document could not be retrieved (name):" name))))
+      (debug "Unknown document or document could not be retrieved (name):" name))))
 
 (s/defn get-document-version :- (s/maybe Document)
   [context :- Context
