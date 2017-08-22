@@ -67,7 +67,9 @@
                           last-operation :- s/Inst])
 
 (defstate ^:dynamic *reaper-task-pool*
-  :start (at-at/mk-pool))
+  :start (at-at/mk-pool)
+  :stop  (at-at/stop-and-reset-pool!
+          *reaper-task-pool* :strategy :stop))
 
 (def reaper (agent {}))
 
