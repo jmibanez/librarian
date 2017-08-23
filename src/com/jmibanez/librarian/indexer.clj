@@ -85,31 +85,17 @@
   :stop  false)
 
 (defn dispatch-store-event [ev]
-  (let [{:keys [event context payload]} ev]
-    (debug "Event!" ev)
-    (case event
-      :document-write
-      (do
-        (send-off indexer add-document-to-index payload)
-        true)
-
-      :transaction-start
-      true
-
-      :transaction-commit
-      (do
-        (send-off indexer run-indexer)
-        true)
-
-      :transaction-cancel
-      ;; FIXME: Remove index entries
-      true
-
-      :transaction-conflict
-      true
-
-      nil
-      false)))
+  (if-not (nil? ev)
+    (let [{:keys [event context payload]} ev]
+      (debug "Event!" ev)
+      (condp = event
+        :document-write     (do
+                              (send-off indexer add-document-to-index payload)
+                              true)
+        :transaction-commit (do
+                              (send-off indexer run-indexer)
+                              true)
+        true))))
 
 (defn start-indexer! []
   (let [store-events (chan)]
