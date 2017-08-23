@@ -121,7 +121,9 @@
 (s/defn get-query-document-by-name :- QueryDocument
   [context    :- store/Context
    query-name :- s/Str]
-  (if-let [doc (store/get-document-by-name context query-name)]
+  (if-let [doc (store/get-document-by-name context
+                                           query-type
+                                           query-name)]
     (if-not (= query-type
                (:type doc))
       (throw (Exception. "Not a valid query document"))

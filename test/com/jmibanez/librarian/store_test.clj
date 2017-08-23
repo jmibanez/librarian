@@ -33,7 +33,7 @@
          :context nil
          :version "fd6cac245ea8990d8c9d8ae37a3b8e70daa20110f4f5a97d5f6cadb45ef94314"
          :document {:name "Root Document" :system "librarian1"}}
-        (in (sut/get-document-by-name nil sut/root-type-name)))
+        (in (sut/get-document-by-name nil sut/root-type sut/root-type-name)))
 
 (expect {:id sut/schema-type
          :type sut/root-type
@@ -42,14 +42,15 @@
          :context nil
          :version "dee1ebd4af0b20caa004080fb877013bc33105f1a848bafc54242b3f5024a67a"
          :document {:definition "::any"}}
-        (in (sut/get-document-by-name nil sut/schema-type-name)))
+        (in (sut/get-document-by-name nil sut/root-type sut/schema-type-name)))
 
 ;; Should yield nil document for v0/null ID
 (expect nil (sut/get-document-by-id nil uuid/+null+))
 
 ;; Should yield exception for nil name or ID
 (expect clojure.lang.ExceptionInfo (sut/get-document-by-id nil nil))
-(expect clojure.lang.ExceptionInfo (sut/get-document-by-name nil nil))
+(expect clojure.lang.ExceptionInfo (sut/get-document-by-name nil nil nil))
+(expect clojure.lang.ExceptionInfo (sut/get-document-by-name nil sut/root-type nil))
 
 
 ;; Should fetch seeded document
@@ -71,6 +72,17 @@
 (expect {:document {:name "::string"}}
         (in (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)))
+
+
+;; Should fetch different docs by the same name, different type
+(expect {:document {:name "::string"}}
+        (in (sut/get-document-by-name seeds/test-context
+                                      seeds/test-type
+                                      seeds/test-doc-name)))
+(expect {:document {:name "other"}}
+        (in (sut/get-document-by-name seeds/test-context
+                                      seeds/test-other-type
+                                      seeds/test-doc-name)))
 
 ;; Document writes via storage transaction
 (defmacro with-storage-transaction

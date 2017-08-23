@@ -188,6 +188,7 @@ JOIN
   ON h.id = d.id AND h.current_version = d.version
 WHERE
   h.name = :name
+  AND h.type = :type
   AND (h.context = :context OR h.context IS NULL);
 
 -- :name select-document-by-id-and-version :? :1

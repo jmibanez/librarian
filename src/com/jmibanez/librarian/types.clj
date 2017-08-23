@@ -111,7 +111,9 @@
 
 (defn find-type-by-name [owning-context name]
   (let [type-doc-name (str "type/" name)]
-    (if-let [type-doc (store/get-document-by-name owning-context type-doc-name)]
+    (if-let [type-doc (store/get-document-by-name owning-context
+                                                  store/schema-type
+                                                  type-doc-name)]
       (if-not (= (:type type-doc)
                  store/schema-type)
         (throw (Exception. "Not a valid type document"))

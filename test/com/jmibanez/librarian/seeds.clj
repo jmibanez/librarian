@@ -7,6 +7,9 @@
 (hugsql/def-db-fns "sql/base-seed.sql")
 
 
+(def test-type #uuid "143246e3-c0b7-59e3-ae17-29b99ff0d5ac")
+(def test-other-type #uuid "13068b05-bc96-4ed6-9a5f-d49936da40da")
+
 (def test-context #uuid "008dc16e-f7d9-45ce-a043-e482919561c1")
 (def test-doc-id #uuid "34a79262-f324-4911-ac33-8bb62f020d09")
 (def test-doc-name "Foo")
@@ -17,6 +20,8 @@
 
 (def test-type-ref-id #uuid "1ececa2b-0bae-478f-80f4-a291deaf2186")
 (def test-type-ref-name "TestDocWithRef")
+
+(def test-doc-id-same-name #uuid "e649ce0d-801d-414c-bdc1-9605ff7090d1")
 
 (defn populate-db [conn]
   (do-bootstrap)

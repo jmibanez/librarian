@@ -245,13 +245,15 @@
 
 (s/defn get-document-by-name :- (s/maybe Document)
   [context :- Context
+   type    :- Id
    name    :- s/Str]
 
   (jdbc/with-db-transaction [c config/*datasource*
                              {:read-only? true}]
     (if-let [doc-row
              (select-recent-document-by-name c {:context context
-                                                :name name})]
+                                                :type    type
+                                                :name    name})]
       (doc-row->Document doc-row)
       (debug "Unknown document or document could not be retrieved (name):" name))))
 
