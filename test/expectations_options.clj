@@ -12,8 +12,8 @@
 (defn boot-mounts
   {:expectations-options :before-run}
   []
-  (mount/start-without #'idx/indexer-chan
-                       #'idx/indexer)
+  (mount/start-without #'idx/*indexer-pool*
+                       #'idx/indexer-chan)
   (do-migrate))
 
 (defn test-context

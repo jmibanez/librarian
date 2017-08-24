@@ -40,85 +40,91 @@
   :start (start-indexer!)
   :stop  (stop-indexer! indexer-chan))
 
-(defstate indexer-queue
+(defstate ^:dynamic *indexer-queue*
   :start (ref clojure.lang.PersistentQueue/EMPTY)
   :stop  nil)
-(defstate indexer
-  :start (agent {})
+
+(defstate ^:dynamic *indexer-state*
+  :start (ref {})
   :stop  nil)
 
 (declare create-document-index
          run-indexer)
 
-(defn add-document-to-index [indexer-queue doc]
-  (if (= (count indexer-queue)
-         config/indexer-batch-size)
-    ;; Flush work queue
-    (send-off indexer
-              run-indexer))
 
-  (conj indexer-queue doc))
+(defn write-index-row! [c idx-row]
+  (tufte/p
+   ::write-index-row
+   (ensure-paths! c idx-row)
+   (ensure-values! c idx-row)
+   (insert-indexes! c idx-row)))
 
+(defn create-index-for-document [doc]
+  (if-not (nil? doc)
+    (tufte/p
+     ::create-index-for-document
+     (jdbc/with-db-transaction [c config/*datasource*]
+       (doseq [idx-row (create-document-index doc)]
+         (write-index-row! c idx-row))))))
 
 (defn create-index-for-documents [doc-set]
   (tufte/p
    ::create-index-for-documents
-   (let [idx-list (apply concat
-                         (spy :debug (map create-document-index
-                                          doc-set)))]
-
-     (jdbc/with-db-transaction [c config/*datasource*]
-       (doseq [idx-row idx-list]
-         (debug "idx=>" idx-row)
-         (ensure-paths! c idx-row)
-         (ensure-values! c idx-row)
-         (insert-indexes! c idx-row))))))
-
+   (jdbc/with-db-transaction [c config/*datasource*]
+     (let [idx-rows (apply concat
+                           (map create-document-index doc-set))]
+       (doseq [idx-row idx-rows]
+         (write-index-row! c idx-row))))))
 
 (defn take-from-queue! []
   (dosync
-   (let [head (peek @indexer-queue)
-         tail (alter indexer-queue pop)]
+   (let [head (peek @*indexer-queue*)
+         tail (alter *indexer-queue* pop)]
      head)))
 
-(defn run-indexer [indexer]
+(defn run-indexer []
   (tufte/p
    ::indexer
-   (info "Indexer has awoken...")
-   (loop [doc (take-from-queue!)]
+   (debug "Indexer has awoken...")
+   (loop [i 0]
+     (if-not (nil? (peek @*indexer-queue*))
+       (do
+         (create-index-for-document (take-from-queue!))
+         (recur (inc i)))
 
-     (if-not (nil? doc)
-       (jdbc/with-db-transaction [c config/*datasource*]
-         (doseq [idx-row (create-document-index doc)]
-           (tufte/p
-            ::write-index-row
-            (ensure-paths! c idx-row)
-            (ensure-values! c idx-row)
-            (insert-indexes! c idx-row)))))
-
-     (if-not (nil? (peek @indexer-queue))
-       (recur (take-from-queue!)))))
-
-  {})
+       (when (> i 0)
+         (info "Indexed" i "documents"))))))
 
 
 (defstate indexer-alive
   :start true
   :stop  false)
 
+
+(defn queue-for-indexing [transaction-id doc]
+  (dosync
+   (alter *indexer-queue* conj doc)
+   (alter *indexer-state*
+          update transaction-id conj
+          [(:id doc) (:version doc)])
+   true))
+
+
+(defn clear-indexer-state [transaction-id]
+  (dosync
+   (alter *indexer-state*
+          dissoc transaction-id)))
+
 (defn dispatch-store-event [ev]
   (if-not (nil? ev)
-    (let [{:keys [event context payload]} ev]
+    (let [{:keys [event context payload transaction]} ev]
       (debug "Event!" ev)
       (condp = event
-        :document-write     (dosync
-                             (alter indexer-queue
-                                    add-document-to-index payload)
-                             true)
-        :transaction-commit (do
-                              (send-off indexer run-indexer)
-                              true)
+        :document-write     (queue-for-indexing transaction
+                                                payload)
+        :transaction-commit (clear-indexer-state (:id payload))
         true))))
+
 
 (defn start-indexer! []
   (let [store-events (chan)]
@@ -127,11 +133,14 @@
       (if (dispatch-store-event ev)
         (recur (<! store-events))))
 
-    (at-at/every config/indexer-period
-                 (fn []
-                   (send-off indexer run-indexer))
-                 *indexer-pool*
-                 :initial-delay config/indexer-period)
+    (doseq [i (range config/indexer-threads)]
+      (at-at/every config/indexer-period
+                   run-indexer
+                   *indexer-pool*
+                   :desc (str "Indexer #" i)
+                   :initial-delay (+ config/indexer-period
+                                     (* i 500))))
+
     (info "Indexer started.")
     store-events))
 
