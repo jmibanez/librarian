@@ -6,6 +6,8 @@
             [schema.core :as s]
             [mount.core :refer [defstate]]
 
+            [overtone.at-at :as at-at]
+
             [clojure.java.jdbc :as jdbc]
             [clojure.data :as data]
             [cheshire.core :as json]
@@ -28,25 +30,34 @@
 (declare start-indexer!
          stop-indexer!)
 
+(defstate ^:dynamic *indexer-pool*
+  :start (at-at/mk-pool)
+  :stop  (at-at/stop-and-reset-pool!
+          *indexer-pool* :strategy :stop))
+
+
 (defstate indexer-chan
   :start (start-indexer!)
   :stop  (stop-indexer! indexer-chan))
 
+(defstate indexer-queue
+  :start (ref clojure.lang.PersistentQueue/EMPTY)
+  :stop  nil)
 (defstate indexer
-  :start (agent [])
+  :start (agent {})
   :stop  nil)
 
 (declare create-document-index
          run-indexer)
 
-(defn add-document-to-index [index-queue doc]
-  (if (= (count index-queue)
+(defn add-document-to-index [indexer-queue doc]
+  (if (= (count indexer-queue)
          config/indexer-batch-size)
     ;; Flush work queue
     (send-off indexer
               run-indexer))
 
-  (spy :debug (conj index-queue doc)))
+  (conj indexer-queue doc))
 
 
 (defn create-index-for-documents [doc-set]
@@ -57,27 +68,38 @@
                                           doc-set)))]
 
      (jdbc/with-db-transaction [c config/*datasource*]
-       (debug "idx-list->" (vec idx-list))
        (doseq [idx-row idx-list]
          (debug "idx=>" idx-row)
          (ensure-paths! c idx-row)
          (ensure-values! c idx-row)
          (insert-indexes! c idx-row))))))
 
-(defn run-indexer [index-queue]
-  (info "Indexer has awoken...")
-  (if (<= (count index-queue)
-          config/indexer-batch-size)
-    (spy :debug (create-index-for-documents index-queue))
 
-    ;; Split into batches
-    (tufte/p
-     ::index-batch
-     (doseq [batch (partition config/indexer-batch-size
-                              index-queue)]
-       (info "Indexing batch of " (count batch))
-       (spy :debug (create-index-for-documents batch)))))
-  [])
+(defn take-from-queue! []
+  (dosync
+   (let [head (peek @indexer-queue)
+         tail (alter indexer-queue pop)]
+     head)))
+
+(defn run-indexer [indexer]
+  (tufte/p
+   ::indexer
+   (info "Indexer has awoken...")
+   (loop [doc (take-from-queue!)]
+
+     (if-not (nil? doc)
+       (jdbc/with-db-transaction [c config/*datasource*]
+         (doseq [idx-row (create-document-index doc)]
+           (tufte/p
+            ::write-index-row
+            (ensure-paths! c idx-row)
+            (ensure-values! c idx-row)
+            (insert-indexes! c idx-row)))))
+
+     (if-not (nil? (peek @indexer-queue))
+       (recur (take-from-queue!)))))
+
+  {})
 
 
 (defstate indexer-alive
@@ -89,9 +111,10 @@
     (let [{:keys [event context payload]} ev]
       (debug "Event!" ev)
       (condp = event
-        :document-write     (do
-                              (send-off indexer add-document-to-index payload)
-                              true)
+        :document-write     (dosync
+                             (alter indexer-queue
+                                    add-document-to-index payload)
+                             true)
         :transaction-commit (do
                               (send-off indexer run-indexer)
                               true)
@@ -104,6 +127,11 @@
       (if (dispatch-store-event ev)
         (recur (<! store-events))))
 
+    (at-at/every config/indexer-period
+                 (fn []
+                   (send-off indexer run-indexer))
+                 *indexer-pool*
+                 :initial-delay config/indexer-period)
     (info "Indexer started.")
     store-events))
 
