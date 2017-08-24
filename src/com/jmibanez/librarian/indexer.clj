@@ -145,7 +145,7 @@
                     :version     s/Str
                     :path        s/Str
                     :value       s/Any})
-(s/defschema IndexList [Index])
+(s/defschema IndexList #{Index})
 
 (declare flatten-path
          index-row)
@@ -161,8 +161,7 @@
            (->> document
                 (flatten-path [])
                 (map (index-row doc-id version))
-                (sort #(compare (first %1)
-                                (first %2)))))
+                (set)))
 
       (do
         (warn "Cannot create index for unknown or unretrievable document")
