@@ -115,6 +115,7 @@
    (alter *indexer-state*
           dissoc transaction-id)))
 
+(declare unindex-transaction-documents!)
 (defn dispatch-store-event [ev]
   (if-not (nil? ev)
     (let [{:keys [event context payload transaction]} ev]
@@ -123,6 +124,8 @@
         :document-write     (queue-for-indexing transaction
                                                 payload)
         :transaction-commit (clear-indexer-state (:id payload))
+        :transaction-cancel (unindex-transaction-documents!
+                             payload)
         true))))
 
 
@@ -205,3 +208,37 @@
      :path         (path-key->json-path k)
      :value        (json/generate-string v)}))
 
+
+(defn clear-documents-from-queue [q docs]
+  (let [doc-set (set docs)
+        filtered-q (remove #(contains? doc-set
+                                       [(:id %) (:version %)])
+                           q)]
+
+    (apply conj clojure.lang.PersistentQueue/EMPTY filtered-q)))
+
+
+(defn unindex-transaction-documents!
+  [transaction]
+
+  (jdbc/with-db-transaction [c config/*datasource*]
+    (info "Cancelling on-going index of documents in" transaction)
+
+    (let [transaction-id (:id transaction)
+          documents-in-transaction (get @*indexer-state* transaction-id)]
+
+      ;; First, grovel through the existing indexer queue to remove all
+      ;; documents related to this transaction
+      (dosync
+       (let []
+         (alter *indexer-queue*
+                clear-documents-from-queue documents-in-transaction)
+         (alter *indexer-state* dissoc transaction-id)))
+
+      ;; Next, clear out the indexes for those documents
+      (info "Docs to invalidate" (count documents-in-transaction))
+      (doseq [[doc-id version] documents-in-transaction]
+        (spy :debug (invalidate-index-for-document-and-version! c {:id doc-id
+                                                                   :version version})))))
+
+  true)

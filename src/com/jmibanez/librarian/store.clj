@@ -74,14 +74,19 @@
 (def reaper (agent {}))
 
 
+(declare start-gc)
+(defstate gc-reaper
+  :start (start-gc))
+
 (def StoreEventType (s/enum :transaction-start
                             :transaction-commit
                             :transaction-cancel
                             :transaction-conflict
                             :document-write))
-(s/defschema StoreEvent {:event   StoreEventType
-                         :context Context
-                         :payload s/Any})
+(s/defschema StoreEvent {:event       StoreEventType
+                         :context     Context
+                         :payload     s/Any
+                         (s/optional-key :transaction) (s/maybe Id)})
 
 (defstate ^:dynamic *_events-channel*
   :start (-> config/event-buffer-size
@@ -212,9 +217,10 @@
                                           :document-id      (:id document)
                                           :version          doc-version})
 
-         (>!! *_events-channel* {:event   :document-write
-                                 :context (:context transaction)
-                                 :payload document})
+         (>!! *_events-channel* {:event       :document-write
+                                 :context     (:context transaction)
+                                 :payload     document
+                                 :transaction (:id transaction)})
          document)
 
        ;; FIXME: Raise exception: Invalid transaction state
@@ -433,3 +439,14 @@
 
       (clear-transaction-documents! c transaction)
       (clear-transaction-state-updates! c transaction))))
+
+
+(defn gc-unreferenced-documents []
+  (debug "Document GC start")
+  (jdbc/with-db-transaction [c config/*datasource*]
+    (spy :debug (clear-unreferenced-documents! c))))
+
+(defn start-gc []
+  (at-at/every config/store-gc-period
+               gc-unreferenced-documents
+               *reaper-task-pool*))

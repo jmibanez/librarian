@@ -31,3 +31,8 @@ JOIN
        AND jsonb(:value) = idx_val.value
 WHERE p.path = :path
 ON CONFLICT DO NOTHING;
+
+-- :name invalidate-index-for-document-and-version! :!
+DELETE FROM document_index
+WHERE document_id = :id
+      AND version = :version;

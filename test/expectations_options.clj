@@ -2,6 +2,7 @@
   (:require [taoensso.timbre :as timbre]
             [com.jmibanez.librarian
              [indexer :as idx]
+             [store :as store]
              [migrations :refer [do-migrate]]
              [seeds :as seed]]
             [schema.core :as s]
@@ -13,7 +14,8 @@
   {:expectations-options :before-run}
   []
   (mount/start-without #'idx/*indexer-pool*
-                       #'idx/indexer-chan)
+                       #'idx/indexer-chan
+                       #'store/gc-reaper)
   (do-migrate))
 
 (defn test-context

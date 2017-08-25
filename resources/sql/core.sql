@@ -140,11 +140,43 @@ WHERE document_header.id = transaction_docs.id
 
 -- :name clear-transaction-documents! :! :n
 DELETE FROM transaction_document_item
-WHERE transaction_id = :id
+WHERE transaction_id = :id;
 
 -- :name clear-transaction-state-updates! :! :n
 DELETE FROM transaction_document_state_item
 WHERE transaction_id = :id
+
+-- :name clear-unreferenced-documents! :! :n
+WITH document_refs AS (
+    SELECT
+        DISTINCT document_id, version
+    FROM
+        transaction_document_item
+
+    UNION
+
+    SELECT
+        DISTINCT document_id, version
+    FROM
+        transaction_document_state_item
+), unrefed_version AS (
+    DELETE FROM document
+    WHERE (id, version) NOT IN (
+       SELECT
+           document_id, version
+       FROM
+           document_refs
+    )
+)
+DELETE FROM document_header
+WHERE
+    current_version IS NULL
+    AND id NOT IN (
+        SELECT
+            document_id
+        FROM
+            document_refs
+    )
 
 -- :name select-transaction-stub :? :1
 SELECT
