@@ -264,3 +264,22 @@
 
               (-> (sut/get-document-by-id seeds/test-context new-doc-id)
                   :document))))
+
+;; Preserve dict keys that can't be coerced to keywords
+(expect {"name with spaces" 1234}
+        (in (let [new-doc-id (uuid/v4)]
+              (with-storage-transaction
+                [tx seeds/test-context]
+                (->> {:id             new-doc-id
+                      :name           "test-new-doc"
+                      :type           sut/root-type
+                      :context        seeds/test-context
+                      :state          :new
+                      :document       {"name with spaces" 1234}}
+                     (sut/map->Document)
+                     (sut/write-document! tx))
+                (sut/commit-transaction! tx))
+
+              (-> (sut/get-document-by-id seeds/test-context new-doc-id)
+                  :document))))
+

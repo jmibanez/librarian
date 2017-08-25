@@ -312,6 +312,15 @@
       (.setValue (json/generate-string value))))
 
 
+(def ^:private keyword-chars
+  #"^[A-Za-z][A-Za-z0-9\.\*\+!\-_'\?]*$")
+(defn- safe-keyword [k]
+  (if (re-find keyword-chars k)
+    ;; Pass-through strings that are valid keywords
+    (keyword k)
+
+    k))
+
 (extend-protocol jdbc/ISQLValue
   clojure.lang.Keyword
   (sql-value [value] (name value))
@@ -328,8 +337,8 @@
     (let [type  (.getType pgobj)
           value (.getValue pgobj)]
       (case type
-        "json" (json/parse-string value true)
-        "jsonb" (json/parse-string value true)
+        "json" (json/parse-string value safe-keyword)
+        "jsonb" (json/parse-string value safe-keyword)
         :else value))))
 
 
