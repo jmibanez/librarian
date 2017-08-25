@@ -185,6 +185,14 @@ FROM
   transaction_stub
 WHERE id = :id
 
+-- :name select-open-transaction-stubs :? :*
+SELECT
+  id, context, timeout, state, last_operation
+FROM
+  transaction_stub
+WHERE
+  state = 'dirty' OR state = 'started';
+
 -- :name select-document-header :? :1
 SELECT
   h.id, h.type, h.name, h.state, h.context, h.current_version,

@@ -71,7 +71,9 @@
   :stop  (at-at/stop-and-reset-pool!
           *reaper-task-pool* :strategy :stop))
 
-(def reaper (agent {}))
+(declare reschedule-reapers)
+(defstate ^:dynamic *reaper*
+  :start (reschedule-reapers))
 
 
 (declare start-gc)
@@ -401,6 +403,18 @@
       nil)))
 
 ;; Transaction reaper
+
+(defn reschedule-reapers []
+  (let [reaper (agent {})]
+
+    (jdbc/with-db-transaction [c config/*datasource*]
+      (let [open-transactions (->> (select-open-transaction-stubs c)
+                                   (map stub-row->Transaction))]
+        (doseq [transaction open-transactions]
+          (schedule-transaction-reaper! transaction reaper))))
+
+    reaper))
+
 (declare clear-transaction-items!)
 (defn reap-transaction! [transaction]
   (info "Reap: " transaction)
@@ -408,23 +422,26 @@
                               #(contains? #{:started :dirty} %))
     (do
       (clear-transaction-items! transaction)
-      (send reaper dissoc (:id transaction)))
+      (send *reaper* dissoc (:id transaction)))
     (warn "Tried to reap transaction in the wrong state, not doing anything")))
 
 
-(defn schedule-transaction-reaper! [transaction]
-  (let [timeout-in-secs (:timeout transaction 600)
-        timeout-in-ms (* 1000 timeout-in-secs)
-        scheduled-task-fn (at-at/after timeout-in-ms
-                                       #(reap-transaction! transaction)
-                                       *reaper-task-pool*)]
-    (send reaper assoc (:id transaction)
-          scheduled-task-fn)))
+(defn schedule-transaction-reaper!
+  ([transaction]
+   (schedule-transaction-reaper! transaction *reaper*))
+  ([transaction reaper]
+   (let [timeout-in-secs (:timeout transaction 600)
+         timeout-in-ms (* 1000 timeout-in-secs)
+         scheduled-task-fn (at-at/after timeout-in-ms
+                                        #(reap-transaction! transaction)
+                                        *reaper-task-pool*)]
+     (send reaper assoc (:id transaction)
+           scheduled-task-fn))))
 
 (defn cancel-transaction-reaper! [transaction]
-  (if-let [scheduled-task-fn (get @reaper (:id transaction))]
+  (if-let [scheduled-task-fn (get @*reaper* (:id transaction))]
     (at-at/stop scheduled-task-fn)
-    (send reaper dissoc (:id transaction))))
+    (send *reaper* dissoc (:id transaction))))
 
 (defn clear-transaction-items! [transaction]
   (jdbc/with-db-transaction [c config/*datasource*

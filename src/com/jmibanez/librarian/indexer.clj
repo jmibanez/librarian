@@ -40,12 +40,16 @@
   :start (start-indexer!)
   :stop  (stop-indexer! indexer-chan))
 
+(declare scan-for-reindexing)
 (defstate ^:dynamic *indexer-queue*
-  :start (ref clojure.lang.PersistentQueue/EMPTY)
-  :stop  nil)
+  :start (scan-for-reindexing)
+  :stop  (dosync
+          (ref-set *indexer-queue*
+                   clojure.lang.PersistentQueue/EMPTY)))
 
+(declare reload-state-from-db)
 (defstate ^:dynamic *indexer-state*
-  :start (ref {})
+  :start (reload-state-from-db)
   :stop  nil)
 
 (declare create-document-index
@@ -242,3 +246,32 @@
                                                                    :version version})))))
 
   true)
+
+(defn scan-for-reindexing []
+  (let [indexer-queue (ref clojure.lang.PersistentQueue/EMPTY)]
+
+    (jdbc/with-db-transaction [c config/*datasource*]
+      (let [unindexed (->> (select-unindexed-documents c)
+                           (map store/doc-row->Document))]
+        (info "Reindexing" (count unindexed) "documents")
+        (dosync (alter indexer-queue
+                       (fn [q rest]
+                         (apply conj q rest))
+                       unindexed))))
+    indexer-queue))
+
+(defn reload-state-from-db []
+  (let [indexer-state (ref {})]
+
+    (jdbc/with-db-transaction [c config/*datasource*]
+      (let [open-documents (->> (select-documents-for-open-transactions c)
+                                (map (juxt :transaction_id
+                                           :document_id
+                                           :version)))]
+        (dosync
+         (doseq [[transaction-id document-id version] open-documents]
+           (alter indexer-state
+                  update transaction-id conj
+                  [document-id version])))))
+
+    indexer-state))
