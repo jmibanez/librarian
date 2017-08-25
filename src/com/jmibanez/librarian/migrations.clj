@@ -4,7 +4,9 @@
             [mount.core :as mount
              :refer [defstate]]
             [taoensso.timbre :as timbre]
-            [com.jmibanez.librarian.config :as config]))
+            [com.jmibanez.librarian
+             [config :as config]
+             [indexer :as idx]]))
 
 (timbre/refer-timbre)
 
@@ -16,7 +18,9 @@
   (repl/migrate *migration-config*))
 
 (defn migrate []
-  (mount/start)
+  (mount/start-without #'idx/*indexer-pool*
+                       #'idx/*indexer-queue*
+                       #'idx/indexer-chan)
   (do-migrate)
   (mount/stop))
 
