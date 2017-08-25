@@ -245,3 +245,22 @@
 
                 (sut/commit-transaction! tx1)
                 (sut/commit-transaction! tx2)))))
+
+
+;; Check scope of key transforms
+(expect {:name_is_snake_case 1234}
+        (in (let [new-doc-id (uuid/v4)]
+              (with-storage-transaction
+                [tx seeds/test-context]
+                (->> {:id             new-doc-id
+                      :name           "test-new-doc"
+                      :type           sut/root-type
+                      :context        seeds/test-context
+                      :state          :new
+                      :document       {"name_is_snake_case" 1234}}
+                     (sut/map->Document)
+                     (sut/write-document! tx))
+                (sut/commit-transaction! tx))
+
+              (-> (sut/get-document-by-id seeds/test-context new-doc-id)
+                  :document))))

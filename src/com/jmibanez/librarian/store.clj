@@ -294,9 +294,11 @@
 
 (defn doc-row->Document
   [doc-row]
-  (strict-map->Document
-   (update (transform-keys ->kebab-case doc-row)
-           :state keyword)))
+  (let [document (:document doc-row)]
+    (strict-map->Document
+     (-> (transform-keys ->kebab-case doc-row)
+         (update :state keyword)
+         (assoc :document document)))))
 
 (defn stub-row->Transaction
   [stub-row]
