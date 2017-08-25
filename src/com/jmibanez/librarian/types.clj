@@ -110,19 +110,18 @@
     nil))
 
 (defn find-type-by-name [owning-context name]
-  (let [type-doc-name (str "type/" name)]
-    (if-let [type-doc (store/get-document-by-name owning-context
-                                                  store/schema-type
-                                                  type-doc-name)]
-      (if-not (= (:type type-doc)
-                 store/schema-type)
-        (throw (Exception. "Not a valid type document"))
+  (if-let [type-doc (store/get-document-by-name owning-context
+                                                store/schema-type
+                                                name)]
+    (if-not (= (:type type-doc)
+               store/schema-type)
+      (throw (Exception. "Not a valid type document"))
 
-        (strict-map->Type (assoc (:document type-doc)
-                                 :id (:id type-doc)
-                                 :name (:name type-doc)
-                                 :owner (:context type-doc))))
-      nil)))
+      (strict-map->Type (assoc (:document type-doc)
+                               :id (:id type-doc)
+                               :name (:name type-doc)
+                               :owner (:context type-doc))))
+    nil))
 
 (defn write-type-definition [type-def])
 

@@ -12,11 +12,11 @@ VALUES
  'feb03dfc47835f1e0f3998c544c441e879a2e29b49743eaf2065a9cd2d15bc39',
  NOW(), NOW()),
 ('60053ded-32e9-48ee-b6b1-d546b3c071b3'::uuid, '008dc16e-f7d9-45ce-a043-e482919561c1'::uuid,
- 'type/TestDoc', '143246e3-c0b7-59e3-ae17-29b99ff0d5ac'::uuid, 'posted',
+ 'TestDoc', '143246e3-c0b7-59e3-ae17-29b99ff0d5ac'::uuid, 'posted',
  'cff5ae93b8c74e0dcc4abf226f78c28b026610e2',
  NOW(), NOW()),
 ('1ececa2b-0bae-478f-80f4-a291deaf2186'::uuid, '008dc16e-f7d9-45ce-a043-e482919561c1'::uuid,
- 'type/TestDocWithRef', '143246e3-c0b7-59e3-ae17-29b99ff0d5ac'::uuid, 'posted',
+ 'TestDocWithRef', '143246e3-c0b7-59e3-ae17-29b99ff0d5ac'::uuid, 'posted',
  '9c7bb7e2ec219b71f89e9106d123bc3723f33d60',
  NOW(), NOW());
 
