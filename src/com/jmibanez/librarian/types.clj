@@ -2,9 +2,10 @@
   (:require [taoensso.timbre :as timbre]
             [clj-uuid :as uuid]
             [schema.core :as s]
-            [com.jmibanez.librarian.core-schema :as core-schema]
-            [com.jmibanez.librarian.config :as config]
-            [com.jmibanez.librarian.store :as store]))
+            [com.jmibanez.librarian
+             [core-schema :as c]
+             [config :as config]
+             [store :as store]]))
 
 (timbre/refer-timbre)
 
@@ -48,27 +49,27 @@
                  map?    TypeMap
                  :else   (s/maybe s/Str)))
 
-(s/defrecord Type [id         :- core-schema/Id
-                   owner      :- core-schema/Context
+(s/defrecord Type [id         :- c/Id
+                   owner      :- c/Context
                    name       :- s/Str
                    definition :- TypeDefinition])
 
 
 (declare find-type-by-id)
 (s/defn get-type-by-id :- Type
-  [owning-context :- core-schema/Context
-   type-id        :- core-schema/Id]
+  [owning-context :- c/Context
+   type-id        :- c/Id]
   (find-type-by-id owning-context type-id))
 
 (declare find-type-by-name)
 (s/defn get-type-by-name :- Type
-  [owning-context :- core-schema/Context
+  [owning-context :- c/Context
    type-name      :- s/Str]
   (find-type-by-name owning-context type-name))
 
 (declare write-type-definition)
 (s/defn create-type :- Type
-  [owning-context :- core-schema/Context
+  [owning-context :- c/Context
    type-name      :- s/Str
    definition     :- s/Any]
   (let [type-id (uuid/v4)
@@ -79,8 +80,8 @@
     (write-type-definition type-def)))
 
 (s/defn update-type-definition :- Type
-  [owning-context :- core-schema/Context
-   type-id        :- core-schema/Id
+  [owning-context :- c/Context
+   type-id        :- c/Id
    new-definition :- s/Any]
   (let [type-def (find-type-by-id owning-context type-id)]
     (write-type-definition
@@ -89,7 +90,7 @@
 
 (declare resolve-type-ref)
 (s/defn validate-against-type :- s/Any
-  [owning-context :- core-schema/Context
+  [owning-context :- c/Context
    type-name      :- s/Str
    document       :- s/Any]
   (let [schema-def (resolve-type-ref owning-context type-name)]

@@ -20,6 +20,7 @@
                                         sliding-buffer]]
             [com.jmibanez.librarian
              [config :as config]
+             [core-schema :as c]
              [store :as store]])
   (:import [com.jmibanez.librarian.store Document]))
 
@@ -157,7 +158,7 @@
 ;; (def index-type #uuid "1092c705-e1f8-4260-b6db-50e46d136ce5")
 ;; (def index-type-name "index")
 
-(s/defschema Index {:document_id store/Id
+(s/defschema Index {:document_id c/Id
                     :version     s/Str
                     :path        s/Str
                     :value       s/Any})

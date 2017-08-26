@@ -20,7 +20,7 @@
             [hugsql.core :as hugsql]
 
             [com.jmibanez.librarian
-             [core-schema :as core-schema]
+             [core-schema :as c]
              [config :as config]
              [util :refer [defcacheable]]])
   (:import org.postgresql.util.PGobject
@@ -38,15 +38,10 @@
 
 (def DocumentState s/Keyword)
 
-(def Id s/Uuid)
-
-;; Contexts are UUIDs
-(def Context (s/maybe s/Uuid))
-
-(s/defrecord Document [id                 :- Id
+(s/defrecord Document [id                 :- c/Id
                        name               :- (s/maybe s/Str)
-                       type               :- (s/maybe Id)
-                       context            :- (s/maybe Context)
+                       type               :- (s/maybe c/Id)
+                       context            :- (s/maybe c/Context)
                        state              :- DocumentState
                        version            :- (s/maybe s/Str)
                        document           :- s/Any
@@ -60,8 +55,8 @@
                               :cancelled
                               :conflict))
 
-(s/defrecord Transaction [id             :- Id
-                          context        :- Context
+(s/defrecord Transaction [id             :- c/Id
+                          context        :- c/Context
                           timeout        :- s/Int
                           state          :- TransactionState
                           last-operation :- s/Inst])
@@ -86,9 +81,9 @@
                             :transaction-conflict
                             :document-write))
 (s/defschema StoreEvent {:event       StoreEventType
-                         :context     Context
+                         :context     c/Context
                          :payload     s/Any
-                         (s/optional-key :transaction) (s/maybe Id)})
+                         (s/optional-key :transaction) (s/maybe c/Id)})
 
 (defstate ^:dynamic *_events-channel*
   :start (-> config/event-buffer-size
@@ -110,10 +105,10 @@
 (declare schedule-transaction-reaper!)
 (declare create-db-transaction-row!)
 (s/defn start-transaction! :- Transaction
-  ([context    :- Context]
+  ([context    :- c/Context]
    (start-transaction! context default-transaction-timeout))
 
-  ([context    :- Context
+  ([context    :- c/Context
     timeout    :- s/Int]
    (let [transaction-id (uuid/v4)
          transaction    (create-db-transaction-row! context
@@ -232,8 +227,8 @@
        nil))))
 
 (s/defn get-document-by-id :- (s/maybe Document)
-  [context :- Context
-   id      :- Id]
+  [context :- c/Context
+   id      :- c/Id]
 
   (jdbc/with-db-transaction [c config/*datasource*
                              {:read-only? true}]
@@ -244,8 +239,8 @@
       (debug "Unknown document or document could not be retrieved:" id))))
 
 (s/defn get-document-by-name :- (s/maybe Document)
-  [context :- Context
-   type    :- Id
+  [context :- c/Context
+   type    :- c/Id
    name    :- s/Str]
 
   (jdbc/with-db-transaction [c config/*datasource*
@@ -258,8 +253,8 @@
       (debug "Unknown document or document could not be retrieved (name):" name))))
 
 (s/defn get-document-version :- (s/maybe Document)
-  [context :- Context
-   id      :- Id
+  [context :- c/Context
+   id      :- c/Id
    version :- s/Str]
 
   (jdbc/with-db-transaction [c config/*datasource*
@@ -272,8 +267,8 @@
       nil)))
 
 (s/defn get-all-document-versions :- [Document]
-  [context :- Context
-   id      :- Id]
+  [context :- c/Context
+   id      :- c/Id]
   (jdbc/with-db-transaction [c config/*datasource*
                              {:read-only? true}]
     (map doc-row->Document

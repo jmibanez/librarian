@@ -19,8 +19,10 @@
             [json-path]
             [json-path.parser :as path-parser]
 
-            [com.jmibanez.librarian.store :as store]
-            [com.jmibanez.librarian.types :as t])
+            [com.jmibanez.librarian
+             [core-schema :as c]
+             [store :as store]
+             [types :as t]])
   (:import [com.jmibanez.librarian.store Document Transaction]
            [honeysql.types SqlParam]
            [java.util Date]))
@@ -73,7 +75,7 @@
 
 (s/defn create-query-document! :- Document
   "Construct a storage Document from the given query"
-  [context     :- store/Context
+  [context     :- c/Context
    transaction :- Transaction
    query-doc   :- (s/maybe QueryDocument)]
 
@@ -91,9 +93,9 @@
 (s/defn update-query-document! :- Document
   "Update the given query document. Query name cannot be
   changed."
-  [context     :- store/Context
+  [context     :- c/Context
    transaction :- Transaction
-   query-id    :- store/Id
+   query-id    :- c/Id
    query-doc   :- (s/maybe QueryDocument)]
 
   (if-let [doc (store/get-document-by-id context query-id)]
@@ -107,8 +109,8 @@
     (create-query-document! context transaction query-doc)))
 
 (s/defn get-query-document-by-id :- QueryDocument
-  [context   :- store/Context
-   query-id  :- store/Id]
+  [context   :- c/Context
+   query-id  :- c/Id]
   (if-let [doc (store/get-document-by-id context query-id)]
     (if-not (= query-type
                (:type doc))
@@ -119,7 +121,7 @@
     nil))
 
 (s/defn get-query-document-by-name :- QueryDocument
-  [context    :- store/Context
+  [context    :- c/Context
    query-name :- s/Str]
   (if-let [doc (store/get-document-by-name context
                                            query-type
@@ -135,7 +137,7 @@
 
 ;; Generators for default queries
 (s/defn gen-query-get-documents-of-type :- QueryDocument
-  [context     :- store/Context
+  [context     :- c/Context
    transaction :- Transaction
    type        :- s/Uuid
    type-name   :- s/Str
