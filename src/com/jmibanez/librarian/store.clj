@@ -104,6 +104,17 @@
 
 (declare schedule-transaction-reaper!)
 (declare create-db-transaction-row!)
+
+(s/defn get-transaction :- (s/maybe Transaction)
+  [context        :- c/Context
+   transaction-id :- c/Id]
+
+  (jdbc/with-db-transaction [c config/*datasource*]
+    (if-let [row (select-transaction-stub c {:id transaction-id
+                                             :context context})]
+      (-> row (stub-row->Transaction)))))
+
+
 (s/defn start-transaction! :- Transaction
   ([context    :- c/Context]
    (start-transaction! context default-transaction-timeout))
