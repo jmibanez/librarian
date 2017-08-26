@@ -410,7 +410,7 @@
 (defn reap-transaction! [transaction]
   (info "Reap: " transaction)
   (if (cas-transaction-state! transaction :cancelled
-                              #(contains? #{:started :dirty} %))
+                              #(contains? #{:started :dirty :conflict} %))
     (do
       (clear-transaction-items! transaction)
       (send *reaper* dissoc (:id transaction)))

@@ -62,5 +62,5 @@ JOIN
   transaction_stub t
   ON t.id = td.transaction_id
 WHERE
-  t.state = 'dirty'
+  t.state IN ('started', 'dirty', 'conflict')
 GROUP BY td.transaction_id, td.document_id, td.version;

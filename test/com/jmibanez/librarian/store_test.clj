@@ -255,6 +255,24 @@
                 (sut/commit-transaction! tx1)
                 (sut/commit-transaction! tx2)))))
 
+;; Should be able to cancel conflicted transaction
+(expect {:state :cancelled}
+        (in (let [tx1 (sut/start-transaction! seeds/test-context)
+                  tx2 (sut/start-transaction! seeds/test-context)]
+              (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                       seeds/test-doc-id)
+                    new-doc1 (assoc-in doc-record [:document :age]
+                                       "::integer")
+                    new-doc2 (assoc-in doc-record [:document :age]
+                                       "::string")]
+                (sut/write-document! tx1 new-doc1)
+                (sut/write-document! tx2 new-doc2)
+
+                (sut/commit-transaction! tx1)
+                (sut/commit-transaction! tx2)
+
+                (sut/cancel-transaction! tx2)))))
+
 
 ;; Check scope of key transforms
 (expect {:name_is_snake_case 1234}
