@@ -207,13 +207,16 @@
                                  #(contains? #{:started :dirty} %))
        (let [header (ensure-doc-header c document)
              doc (:document document)
+             state (:state document)
              prev-version (current-doc-version c transaction document)
-             doc-version (digest/sha-256 (json/generate-string doc))
+             doc-version (digest/sha-256 (str state
+                                              (json/generate-string doc)))
              doc-version-row (insert-document-version!
                               c {:id       (:id document)
                                  :document doc
                                  :previous prev-version
-                                 :version  doc-version})
+                                 :version  doc-version
+                                 :state    state})
              document (assoc document :version doc-version)]
          (bind-document-version-to-tx! c {:transaction-id   (:id transaction)
                                           :document-id      (:id document)
@@ -227,17 +230,6 @@
 
        ;; FIXME: Raise exception: Invalid transaction state
        nil))))
-
-(s/defn set-document-state! :- Document
-  [transaction :- Transaction
-   document    :- Document
-   new-state   :- DocumentState]
-  (jdbc/with-db-transaction [c config/*datasource*]
-    (bind-document-state-update-to-tx! c {:transaction-id   (:id transaction)
-                                          :document-id      (:id document)
-                                          :version          (:version document)
-                                          :state            new-state})
-    (assoc document :state new-state)))
 
 (s/defn get-document-by-id :- (s/maybe Document)
   [context :- Context
@@ -447,8 +439,7 @@
               (str "Tried to clear a transaction that hasn't been cancelled: "
                    transaction))
 
-      (clear-transaction-documents! c transaction)
-      (clear-transaction-state-updates! c transaction))))
+      (clear-transaction-documents! c transaction))))
 
 
 (defn gc-unreferenced-documents []

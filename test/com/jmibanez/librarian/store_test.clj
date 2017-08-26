@@ -12,7 +12,7 @@
          :name sut/root-type-name
          :state :committed
          :context nil
-         :version "fd6cac245ea8990d8c9d8ae37a3b8e70daa20110f4f5a97d5f6cadb45ef94314"
+         :version "a20190aeb466d75a2cb2b44c51a37a103e0303dc0d24d4c5a9e573062f5d2d66"
          :document {:name "Root Document" :system "librarian1"}}
         (in (sut/get-document-by-id nil sut/root-type)))
 
@@ -21,7 +21,7 @@
          :name sut/schema-type-name
          :state :committed
          :context nil
-         :version "dee1ebd4af0b20caa004080fb877013bc33105f1a848bafc54242b3f5024a67a"
+         :version "477ef70b9f4f23aa113dd01ce7301bdb1a6575a9ea180c16e1090a74be2604a0"
          :document {:definition "::any"}}
         (in (sut/get-document-by-id nil sut/schema-type)))
 
@@ -31,7 +31,7 @@
          :name sut/root-type-name
          :state :committed
          :context nil
-         :version "fd6cac245ea8990d8c9d8ae37a3b8e70daa20110f4f5a97d5f6cadb45ef94314"
+         :version "a20190aeb466d75a2cb2b44c51a37a103e0303dc0d24d4c5a9e573062f5d2d66"
          :document {:name "Root Document" :system "librarian1"}}
         (in (sut/get-document-by-name nil sut/root-type sut/root-type-name)))
 
@@ -40,7 +40,7 @@
          :name sut/schema-type-name
          :state :committed
          :context nil
-         :version "dee1ebd4af0b20caa004080fb877013bc33105f1a848bafc54242b3f5024a67a"
+         :version "477ef70b9f4f23aa113dd01ce7301bdb1a6575a9ea180c16e1090a74be2604a0"
          :document {:definition "::any"}}
         (in (sut/get-document-by-name nil sut/root-type sut/schema-type-name)))
 
@@ -92,7 +92,7 @@
 
 
 ;; Should return newly written document with next version
-(expect {:version "16c9be1774bd08ee0c669f79e915366c2e29865ecd0a5fcba5eb67bec8283313"}
+(expect {:version "d4e3dcd997ecef2b734eead7bf8a55a48c5302af7e90a41c3610bd34bbe0526e"}
         (in (with-storage-transaction
               [tx seeds/test-context]
               (let [doc-record (sut/get-document-by-id seeds/test-context
@@ -126,7 +126,7 @@
 
 ;; Committing the storage transaction should persist document changes,
 ;; including new version
-(expect {:version "16c9be1774bd08ee0c669f79e915366c2e29865ecd0a5fcba5eb67bec8283313"}
+(expect {:version "d4e3dcd997ecef2b734eead7bf8a55a48c5302af7e90a41c3610bd34bbe0526e"}
         (in (with-storage-transaction
               [tx seeds/test-context]
               (let [doc-record (sut/get-document-by-id seeds/test-context
@@ -138,25 +138,28 @@
                 (sut/get-document-by-id seeds/test-context
                                         seeds/test-doc-id)))))
 
-;; set-document-state! should return new state for document
+;; Should return new state for document
 (expect {:state :opened}
         (in (with-storage-transaction
               [tx seeds/test-context]
-              (let [doc-record (sut/get-document-by-id seeds/test-context
-                                                       seeds/test-doc-id)]
-                (sut/set-document-state! tx doc-record :opened)))))
+              (let [doc-record (-> (sut/get-document-by-id seeds/test-context
+                                                           seeds/test-doc-id)
+                                   (assoc :state :opened))]
+                (sut/write-document! tx doc-record)))))
 
 ;; Document state should be persisted
 (expect {:state :opened
-         :version "16c9be1774bd08ee0c669f79e915366c2e29865ecd0a5fcba5eb67bec8283313"}
+         :version "ab873da32ed04d03c31f7cb7fb7d27d8ff0f178475daed57233c34ba4421e332"}
         (in (with-storage-transaction
               [tx seeds/test-context]
               (let [doc-record (sut/get-document-by-id seeds/test-context
                                                        seeds/test-doc-id)
-                    new-doc (assoc-in doc-record [:document :age]
-                                      "::integer")
+                    new-doc (-> doc-record
+                                (assoc-in [:document :age]
+                                          "::integer")
+                                (assoc :state :opened))
                     updated-doc-record (sut/write-document! tx new-doc)]
-                (sut/set-document-state! tx updated-doc-record :opened)
+
                 (sut/commit-transaction! tx)
                 (sut/get-document-by-id seeds/test-context
                                         seeds/test-doc-id)))))
@@ -167,10 +170,12 @@
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context
                                                    seeds/test-doc-id)
-                new-doc (assoc-in doc-record [:document :age]
-                                  "::integer")
+                new-doc (-> doc-record
+                            (assoc-in [:document :age]
+                                      "::integer")
+                            (assoc :state :opened))
                 updated-doc-record (sut/write-document! tx new-doc)]
-            (sut/set-document-state! tx updated-doc-record :opened)
+
             (sut/commit-transaction! tx)
             (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)
@@ -182,10 +187,12 @@
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context
                                                    seeds/test-doc-id)
-                new-doc (assoc-in doc-record [:document :age]
-                                  "::integer")
+                new-doc (-> doc-record
+                            (assoc-in [:document :age]
+                                      "::integer")
+                            (assoc :state :opened))
                 updated-doc-record (sut/write-document! tx new-doc)]
-            (sut/set-document-state! tx updated-doc-record :opened)
+
             (sut/commit-transaction! tx)
             (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)
@@ -199,10 +206,12 @@
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context
                                                    seeds/test-doc-id)
-                new-doc (assoc-in doc-record [:document :age]
-                                  "::integer")
+                new-doc (-> doc-record
+                            (assoc-in [:document :age]
+                                      "::integer")
+                            (assoc :state :opened))
                 updated-doc-record (sut/write-document! tx new-doc)]
-            (sut/set-document-state! tx updated-doc-record :opened)
+
             (sut/commit-transaction! tx)
             (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)

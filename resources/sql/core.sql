@@ -1,16 +1,16 @@
 -- :name insert-document-version! :insert
 INSERT INTO document
-(id, previous, version, document)
+(id, previous, version, document, state, date_modified)
 VALUES
-(:id, :previous, :version, :document)
-RETURNING id, previous, version, document;
+(:id, :previous, :version, :document, :state, NOW())
+RETURNING id, previous, version, document, state, date_modified;
 
 -- :name insert-document-header! :insert
 INSERT INTO document_header
-(id, type, name, context, state, date_created, date_last_modified)
+(id, type, name, context, date_created)
 VALUES
-(:id, :type, :name, :context, :state, NOW(), NOW())
-RETURNING id, type, name, state, context, date_created, date_last_modified;
+(:id, :type, :name, :context, NOW())
+RETURNING id, type, name, context, date_created;
 
 -- :name insert-transaction-row! :insert
 INSERT INTO transaction_stub
@@ -24,12 +24,6 @@ INSERT INTO transaction_document_item
 (transaction_id, document_id, version)
 VALUES
 (:transaction-id, :document-id, :version);
-
--- :name bind-document-state-update-to-tx! :! :n
-INSERT INTO transaction_document_state_item
-(transaction_id, document_id, version, new_state)
-VALUES
-(:transaction-id, :document-id, :version, :state);
 
 -- :name touch-transaction-stub! :! :n
 UPDATE transaction_stub
@@ -50,10 +44,8 @@ WITH transaction_docs AS (
     SELECT
       h.id,
       h.current_version,
-      h.state,
       d.previous AS expected_version,
-      d.version AS new_version,
-      COALESCE(t_state.new_state, h.state) AS new_state
+      d.version AS new_version
     FROM
       document_header h
     JOIN
@@ -65,16 +57,10 @@ WITH transaction_docs AS (
       ON
         t_doc.document_id = d.id
         AND t_doc.version = d.version
-    LEFT JOIN
-      transaction_document_state_item t_state
-      ON
-        t_state.document_id = d.id
-        AND t_state.version = d.version
     JOIN
       transaction_stub t_stub
       ON
         t_doc.transaction_id = t_stub.id
-        OR t_state.transaction_id = t_stub.id
     WHERE
       t_stub.id = :transaction-id
 ), applicable AS (
@@ -100,17 +86,13 @@ FROM
 -- :name commit-transaction-details! :! :n
 UPDATE
   document_header
-SET current_version = transaction_docs.new_version,
-    state = transaction_docs.new_state,
-    date_last_modified = now()
+SET current_version = transaction_docs.new_version
 FROM (
   SELECT
     h.id,
     h.current_version,
-    h.state,
     d.previous AS expected_version,
-    d.version AS new_version,
-    COALESCE(t_state.new_state, h.state) AS new_state
+    d.version AS new_version
   FROM
     document_header h
   JOIN
@@ -122,15 +104,10 @@ FROM (
     ON
       t_doc.document_id = d.id
       AND t_doc.version = d.version
-  LEFT JOIN
-    transaction_document_state_item t_state
-    ON
-      t_state.document_id = d.id
   JOIN
     transaction_stub t_stub
     ON
       t_doc.transaction_id = t_stub.id
-      OR t_state.transaction_id = t_stub.id
   WHERE
     t_stub.id = :transaction-id
 ) transaction_docs
@@ -142,23 +119,12 @@ WHERE document_header.id = transaction_docs.id
 DELETE FROM transaction_document_item
 WHERE transaction_id = :id;
 
--- :name clear-transaction-state-updates! :! :n
-DELETE FROM transaction_document_state_item
-WHERE transaction_id = :id
-
 -- :name clear-unreferenced-documents! :! :n
 WITH document_refs AS (
     SELECT
         DISTINCT document_id, version
     FROM
         transaction_document_item
-
-    UNION
-
-    SELECT
-        DISTINCT document_id, version
-    FROM
-        transaction_document_state_item
 ), unrefed_version AS (
     DELETE FROM document
     WHERE (id, version) NOT IN (
@@ -195,8 +161,8 @@ WHERE
 
 -- :name select-document-header :? :1
 SELECT
-  h.id, h.type, h.name, h.state, h.context, h.current_version,
-  h.date_created, h.date_last_modified
+  h.id, h.type, h.name, h.context, h.current_version,
+  h.date_created
 FROM
   document_header h
 WHERE
@@ -204,9 +170,9 @@ WHERE
 
 -- :name select-recent-document-by-id :? :1
 SELECT
-  h.id, h.type, h.name, h.state, h.context, h.current_version AS version,
-  h.date_created, h.date_last_modified,
-  d.document
+  h.id, h.type, h.name, h.context, h.current_version AS version,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
 FROM
   document_header h
 JOIN
@@ -218,9 +184,9 @@ WHERE
 
 -- :name select-recent-document-by-name :? :1
 SELECT
-  h.id, h.type, h.name, h.state, h.context, h.current_version AS version,
-  h.date_created, h.date_last_modified,
-  d.document
+  h.id, h.type, h.name, h.context, h.current_version AS version,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
 FROM
   document_header h
 JOIN
@@ -233,9 +199,9 @@ WHERE
 
 -- :name select-document-by-id-and-version :? :1
 SELECT
-  h.id, h.type, h.name, h.state, h.context, d.version,
-  h.date_created, h.date_last_modified,
-  d.document
+  h.id, h.type, h.name, h.context, d.version,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
 FROM
   document_header h
 JOIN
@@ -331,9 +297,9 @@ WITH RECURSIVE version_list AS (
       ON prev.previous = vv.version
 )
 SELECT
-  h.id, h.type, h.name, h.state, h.context, d.version,
-  h.date_created, h.date_last_modified,
-  d.document
+  h.id, h.type, h.name, h.context, d.version,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
 FROM
   document_header h
 JOIN
