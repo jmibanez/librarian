@@ -246,20 +246,6 @@ WHERE
   AND (h.context = :context OR h.context IS NULL)
   AND d.version = :version;
 
--- :name select-all-recent-documents-by-type :? :*
-SELECT
-  h.id, h.type, h.state, h.context, d.version,
-  h.date_created, h.date_last_modified,
-  d.document
-FROM
-  document_header h
-JOIN
-  document d
-  ON h.id = d.id AND h.current_version = d.version
-WHERE
-  h.type = :type
-  AND (h.context = :context OR h.context IS NULL)
-
 -- :name select-current-version-for-document :? :1
 WITH RECURSIVE version_list AS (
     SELECT
@@ -318,34 +304,6 @@ JOIN
   version_list vv
   ON
     vv.version_id = latest_head.version_id
-
--- :name select-next-version-for-document :? :1
-SELECT
-  MAX(version) + 1 AS version
-FROM (
-  SELECT
-    h.current_version AS version
-  FROM
-    document_header h
-  WHERE
-    h.id = :id
-
-  UNION
-
-  SELECT
-    d.version
-  FROM
-    transaction_document_item t_doc
-  JOIN
-    document d
-    ON
-      t_doc.document_id = d.id
-      AND t_doc.version = d.version
-  WHERE
-    t_doc.transaction_id = :transaction-id
-    AND t_doc.document_id = :id
-) doc_view;
-
 
 -- :name select-versions-of-document-by-id :? :*
 WITH RECURSIVE version_list AS (

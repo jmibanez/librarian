@@ -378,13 +378,6 @@
      (select-current-version-for-document c {:id doc-id
                                              :transaction-id transaction-id}))))
 
-(defn next-doc-version [c transaction document]
-  (let [transaction-id (:id transaction)
-        doc-id (:id document)]
-    (:version
-     (select-next-version-for-document c {:id doc-id
-                                          :transaction-id transaction-id}))))
-
 (defn cas-transaction-state! [transaction
                               new-state
                               check-fn]
