@@ -226,6 +226,7 @@
              document (assoc document :version doc-version)]
          (bind-document-version-to-tx! c {:transaction-id   (:id transaction)
                                           :document-id      (:id document)
+                                          :expected-version prev-version
                                           :version          doc-version})
 
          (>!! *_events-channel* {:event       :document-write

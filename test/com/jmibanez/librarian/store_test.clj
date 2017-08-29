@@ -274,6 +274,55 @@
                 (sut/cancel-transaction! tx2)))))
 
 
+;; Multiple writes to same document in a single transaction should be
+;; fine; coalesced to latest version
+(expect {:state :committed}
+        (in (with-storage-transaction
+              [tx seeds/test-context]
+              (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                       seeds/test-doc-id)
+                    new-doc1 (sut/write-document! tx
+                                                  (assoc-in doc-record [:document :age]
+                                                            "::integer"))
+                    new-doc2 (sut/write-document! tx
+                                                  (assoc-in new-doc1 [:document :height]
+                                                            "::integer"))]
+                (sut/commit-transaction! tx)))))
+
+(expect {:version "4b26614b8bab0fbd8c4b817ae0e0a95e38ea52d2f7379b044cdfc6a4a901c04f"}
+        (in (with-storage-transaction
+              [tx seeds/test-context]
+              (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                       seeds/test-doc-id)
+                    new-doc1 (sut/write-document! tx
+                                                  (assoc-in doc-record [:document :age]
+                                                            "::integer"))
+                    new-doc2 (sut/write-document! tx
+                                                  (assoc-in new-doc1 [:document :height]
+                                                            "::integer"))]
+                (sut/commit-transaction! tx)
+                (sut/get-document-by-id seeds/test-context
+                                        seeds/test-doc-id)))))
+
+(expect {:age    "::integer"
+         :height "::integer"}
+        (in (with-storage-transaction
+              [tx seeds/test-context]
+              (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                       seeds/test-doc-id)
+                    new-doc1 (sut/write-document! tx
+                                                  (assoc-in doc-record [:document :age]
+                                                            "::integer"))
+                    new-doc2 (sut/write-document! tx
+                                                  (assoc-in new-doc1 [:document :height]
+                                                            "::integer"))]
+                (sut/commit-transaction! tx)
+                (-> (sut/get-document-by-id seeds/test-context
+                                            seeds/test-doc-id)
+                    :document)))))
+
+
+
 ;; Check scope of key transforms
 (expect {:name_is_snake_case 1234}
         (in (let [new-doc-id (uuid/v4)]

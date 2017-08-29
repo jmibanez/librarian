@@ -21,9 +21,12 @@ RETURNING id, context, timeout, state, last_operation;
 
 -- :name bind-document-version-to-tx! :! :n
 INSERT INTO transaction_document_item
-(transaction_id, document_id, version)
+(transaction_id, document_id, expected_version, version)
 VALUES
-(:transaction-id, :document-id, :version);
+(:transaction-id, :document-id, :expected-version, :version)
+ON CONFLICT (transaction_id, document_id)
+DO UPDATE
+  SET version = :version
 
 -- :name touch-transaction-stub! :! :n
 UPDATE transaction_stub
@@ -44,19 +47,14 @@ WITH transaction_docs AS (
     SELECT
       h.id,
       h.current_version,
-      d.previous AS expected_version,
-      d.version AS new_version
+      t_doc.expected_version,
+      t_doc.version AS new_version
     FROM
       document_header h
     JOIN
-      document d
-      ON
-        h.id = d.id
-    LEFT JOIN
       transaction_document_item t_doc
       ON
-        t_doc.document_id = d.id
-        AND t_doc.version = d.version
+        t_doc.document_id = h.id
     JOIN
       transaction_stub t_stub
       ON
@@ -91,19 +89,14 @@ FROM (
   SELECT
     h.id,
     h.current_version,
-    d.previous AS expected_version,
-    d.version AS new_version
+    t_doc.expected_version,
+    t_doc.version AS new_version
   FROM
     document_header h
   JOIN
-    document d
-    ON
-      h.id = d.id
-  LEFT JOIN
     transaction_document_item t_doc
     ON
-      t_doc.document_id = d.id
-      AND t_doc.version = d.version
+      t_doc.document_id = h.id
   JOIN
     transaction_stub t_stub
     ON
@@ -213,63 +206,17 @@ WHERE
   AND d.version = :version;
 
 -- :name select-current-version-for-document :? :1
-WITH RECURSIVE version_list AS (
-    SELECT
-      0 as version_id, d.id, d.previous, d.version
-    FROM
-      document d
-    WHERE
-      d.previous IS NULL
-      AND d.id = :id
-
-    UNION
-
-    SELECT
-      vv.version_id + 1, prev.id, prev.previous, prev.version
-    FROM
-      document prev
-    JOIN
-      version_list vv
-      ON prev.previous = vv.version
-), version_heads AS (
-    SELECT
-      vv.version_id, vv.version
-    FROM
-      version_list vv
-    JOIN
-      transaction_document_item t_doc
-      ON
-        t_doc.document_id = vv.id
-        AND t_doc.version = vv.version
-    WHERE
-      t_doc.transaction_id = :transaction-id
-
-    UNION
-
-    SELECT
-      vv.version_id, vv.version
-    FROM
-      version_list vv
-    JOIN
-      document_header h
-      ON
-        h.id = vv.id
-        AND h.current_version = vv.version
-    WHERE
-      h.id = :id
-)
 SELECT
-  vv.version
-FROM (
-    SELECT
-      MAX(version_id) version_id
-    FROM
-      version_heads
-) latest_head
-JOIN
-  version_list vv
+  COALESCE(t_doc.version, h.current_version) AS version
+FROM
+  document_header h
+LEFT OUTER JOIN
+  transaction_document_item t_doc
   ON
-    vv.version_id = latest_head.version_id
+    h.id = t_doc.document_id
+    AND t_doc.transaction_id = :transaction-id
+WHERE
+  h.id = :id
 
 -- :name select-versions-of-document-by-id :? :*
 WITH RECURSIVE version_list AS (
