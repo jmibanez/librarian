@@ -290,8 +290,8 @@
   (execute-this [this conn params]))
 
 (s/defn exec :- s/Any
-  [executable :- Executable
-   params]
+  [executable :- (s/protocol Executable)
+   params     :- s/Any]
   (jdbc/with-db-transaction [c config/*datasource*]
     (tufte/p
      ::exec
