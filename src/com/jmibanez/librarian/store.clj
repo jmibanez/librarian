@@ -271,6 +271,38 @@
       (doc-row->Document doc-row)
       (debug "Unknown document or document could not be retrieved (name):" name))))
 
+(s/defn get-document-by-id-in-transaction :- (s/maybe Document)
+  [transaction :- Transaction
+   id          :- c/Id]
+
+  (jdbc/with-db-transaction [c config/*datasource*
+                             {:read-only? true}]
+    (let [transaction-id (:id transaction)
+          context        (:context transaction)]
+      (if-let [doc-row
+               (select-transaction-document-by-id c {:transaction-id transaction-id
+                                                     :context        context
+                                                     :id             id})]
+        (doc-row->Document doc-row)
+        (debug "Unknown document or document could not be retrieved:" id)))))
+
+(s/defn get-document-by-name-in-transaction :- (s/maybe Document)
+  [transaction :- Transaction
+   type        :- c/Id
+   name        :- s/Str]
+
+  (jdbc/with-db-transaction [c config/*datasource*
+                             {:read-only? true}]
+    (let [transaction-id (:id transaction)
+          context        (:context transaction)]
+      (if-let [doc-row
+               (select-transaction-document-by-name c {:transaction-id transaction-id
+                                                       :context        context
+                                                       :type           type
+                                                       :name           name})]
+        (doc-row->Document doc-row)
+        (debug "Unknown document or document could not be retrieved (name):" name)))))
+
 (s/defn get-document-version :- (s/maybe Document)
   [context :- c/Context
    id      :- c/Id

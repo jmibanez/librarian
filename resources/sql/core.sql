@@ -190,6 +190,63 @@ WHERE
   AND h.type = :type
   AND (h.context = :context OR h.context IS NULL);
 
+-- :name select-transaction-document-by-id :? :1
+SELECT
+  h.id, h.type, h.name, h.context,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
+FROM (
+    SELECT
+      h.id, h.type, h.name, h.context, h.date_created,
+      COALESCE(t_doc.version, h.current_version) AS current_version
+    FROM
+      document_header h
+    LEFT OUTER JOIN
+      transaction_document_item t_doc
+      ON
+        h.id = t_doc.document_id
+        AND t_doc.transaction_id = :transaction-id
+    -- Do we need this WHERE clause here, or can the outer WHERE limit
+    -- the inner query properly for the COALESCE to work?
+    WHERE
+      h.id = :id
+) h
+JOIN
+  document d
+  ON h.id = d.id AND h.current_version = d.version
+WHERE
+  h.id = :id
+  AND (h.context = :context OR h.context IS NULL);
+
+-- :name select-transaction-document-by-name :? :1
+SELECT
+  h.id, h.type, h.name, h.context, h.current_version AS version,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
+FROM (
+    SELECT
+      h.id, h.type, h.name, h.context, h.date_created,
+      COALESCE(t_doc.version, h.current_version) AS current_version
+    FROM
+      document_header h
+    LEFT OUTER JOIN
+      transaction_document_item t_doc
+      ON
+        h.id = t_doc.document_id
+        AND t_doc.transaction_id = :transaction-id
+    -- Do we need this WHERE clause here, or can the outer WHERE limit
+    -- the inner query properly for the COALESCE to work?
+    WHERE
+      h.name = :name
+) h
+JOIN
+  document d
+  ON h.id = d.id AND h.current_version = d.version
+WHERE
+  h.name = :name
+  AND h.type = :type
+  AND (h.context = :context OR h.context IS NULL);
+
 -- :name select-document-by-id-and-version :? :1
 SELECT
   h.id, h.type, h.name, h.context,

@@ -226,6 +226,30 @@
                                                  seeds/test-doc-id
                                                  (sut/version updated-doc-record))))))
 
+;; Should be able to fetch current document version in transaction
+(expect seeds/test-doc-root-version
+        (with-storage-transaction
+          [tx seeds/test-context]
+          (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                   seeds/test-doc-id)
+                new-doc (assoc-in doc-record [:document :age]
+                                  "::integer")]
+            (sut/write-document! tx new-doc)
+            (-> (sut/get-document-by-id seeds/test-context seeds/test-doc-id)
+                (sut/version)))))
+
+(expect "31f6d5f6a551d0449d9038388ae635227ac3385792d9633820fa281d69577eda"
+        (with-storage-transaction
+          [tx seeds/test-context]
+          (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                   seeds/test-doc-id)
+                new-doc (assoc-in doc-record [:document :age]
+                                  "::integer")]
+            (sut/write-document! tx new-doc)
+            (-> (sut/get-document-by-id-in-transaction tx seeds/test-doc-id)
+                (sut/version)))))
+
+
 ;; Fetching non-existent version of a document should return nil
 (expect nil
         (with-storage-transaction
