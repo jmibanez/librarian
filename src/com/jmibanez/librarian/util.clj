@@ -19,3 +19,24 @@
        (defn ~name ~args
          (cache-result [~cache-name ~args]
                        ~@body)))))
+
+(defmulti canonical-representation
+  (fn [o]
+    (type o)))
+
+(defmethod canonical-representation
+  :default
+  [o] o)
+
+(defmethod canonical-representation
+  clojure.lang.PersistentVector
+  [v]
+  (for [e v]
+    (canonical-representation e)))
+
+(defmethod canonical-representation
+  clojure.lang.APersistentMap
+  [o]
+  (into (sorted-map)
+        (for [[k v] o]
+          [k (canonical-representation v)])))

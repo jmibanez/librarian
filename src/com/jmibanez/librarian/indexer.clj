@@ -92,7 +92,7 @@
   [doc :- Document]
 
   (let [doc-id   (:id doc)
-        version  (:version doc)
+        version  (store/version doc)
         document (:document doc)]
     (debug "document to index=>" document)
     (if-not (nil? document)
@@ -139,7 +139,7 @@
    (alter *indexer-queue* conj doc)
    (alter *indexer-state*
           update transaction-id conj
-          [(:id doc) (:version doc)])
+          [(:id doc) (store/version doc)])
    true))
 
 
@@ -231,7 +231,7 @@
 (defn clear-documents-from-queue [q docs]
   (let [doc-set (set docs)
         filtered-q (remove #(contains? doc-set
-                                       [(:id %) (:version %)])
+                                       [(:id %) (store/version %)])
                            q)]
 
     (apply conj clojure.lang.PersistentQueue/EMPTY filtered-q)))

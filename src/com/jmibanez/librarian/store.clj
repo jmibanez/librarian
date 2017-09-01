@@ -22,7 +22,8 @@
             [com.jmibanez.librarian
              [core-schema :as c]
              [config :as config]
-             [util :refer [defcacheable]]])
+             [util :refer [defcacheable
+                           canonical-representation]]])
   (:import org.postgresql.util.PGobject
            java.util.Date))
 
@@ -38,15 +39,23 @@
 
 (def DocumentState s/Keyword)
 
+(defprotocol VersionedObject
+  (version  [this]))
+
 (s/defrecord Document [id                 :- c/Id
                        name               :- (s/maybe s/Str)
                        type               :- (s/maybe c/Id)
                        context            :- (s/maybe c/Context)
                        state              :- DocumentState
-                       version            :- (s/maybe s/Str)
                        document           :- s/Any
                        date-created       :- (s/maybe s/Inst)
-                       date-last-modified :- (s/maybe s/Inst)])
+                       date-last-modified :- (s/maybe s/Inst)]
+  VersionedObject
+  (version [_]
+    (let [state     (clojure.core/name state)
+          doc       (canonical-representation document)
+          json-doc  (json/generate-string doc)]
+      (spy :debug (digest/sha-256 (str state json-doc))))))
 
 
 (def TransactionState (s/enum :started
@@ -215,15 +224,13 @@
              doc (:document document)
              state (:state document)
              prev-version (current-doc-version c transaction document)
-             doc-version (digest/sha-256 (str state
-                                              (json/generate-string doc)))
+             doc-version (spy :debug (version document))
              doc-version-row (insert-document-version!
                               c {:id       (:id document)
                                  :document doc
                                  :previous prev-version
                                  :version  doc-version
-                                 :state    state})
-             document (assoc document :version doc-version)]
+                                 :state    state})]
          (bind-document-version-to-tx! c {:transaction-id   (:id transaction)
                                           :document-id      (:id document)
                                           :expected-version prev-version

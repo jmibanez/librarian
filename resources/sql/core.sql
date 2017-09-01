@@ -163,7 +163,7 @@ WHERE
 
 -- :name select-recent-document-by-id :? :1
 SELECT
-  h.id, h.type, h.name, h.context, h.current_version AS version,
+  h.id, h.type, h.name, h.context,
   h.date_created,
   d.document, d.state, d.date_modified AS date_last_modified
 FROM
@@ -177,7 +177,7 @@ WHERE
 
 -- :name select-recent-document-by-name :? :1
 SELECT
-  h.id, h.type, h.name, h.context, h.current_version AS version,
+  h.id, h.type, h.name, h.context,
   h.date_created,
   d.document, d.state, d.date_modified AS date_last_modified
 FROM
@@ -192,7 +192,7 @@ WHERE
 
 -- :name select-document-by-id-and-version :? :1
 SELECT
-  h.id, h.type, h.name, h.context, d.version,
+  h.id, h.type, h.name, h.context,
   h.date_created,
   d.document, d.state, d.date_modified AS date_last_modified
 FROM

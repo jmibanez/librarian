@@ -12,18 +12,22 @@
          :name sut/root-type-name
          :state :committed
          :context nil
-         :version "a20190aeb466d75a2cb2b44c51a37a103e0303dc0d24d4c5a9e573062f5d2d66"
          :document {:name "Root Document" :system "librarian1"}}
         (in (sut/get-document-by-id nil sut/root-type)))
+(expect "d7dab10e905c25d3f11f9349f29f63eb632c71486a99fd092db2a0e8b9bba341"
+        (-> (sut/get-document-by-id nil sut/root-type)
+            (sut/version)))
 
 (expect {:id sut/schema-type
          :type sut/root-type
          :name sut/schema-type-name
          :state :committed
          :context nil
-         :version "477ef70b9f4f23aa113dd01ce7301bdb1a6575a9ea180c16e1090a74be2604a0"
          :document {:definition "::any"}}
         (in (sut/get-document-by-id nil sut/schema-type)))
+(expect "b23c5525b96367b9264546da6ebfcc3abba121d26621faea6e4e592e2e600400"
+        (-> (sut/get-document-by-id nil sut/schema-type)
+            (sut/version)))
 
 ;; Should be able to fetch root documents by name
 (expect {:id sut/root-type
@@ -31,18 +35,22 @@
          :name sut/root-type-name
          :state :committed
          :context nil
-         :version "a20190aeb466d75a2cb2b44c51a37a103e0303dc0d24d4c5a9e573062f5d2d66"
          :document {:name "Root Document" :system "librarian1"}}
         (in (sut/get-document-by-name nil sut/root-type sut/root-type-name)))
+(expect "d7dab10e905c25d3f11f9349f29f63eb632c71486a99fd092db2a0e8b9bba341"
+        (-> (sut/get-document-by-name nil sut/root-type sut/root-type-name)
+            (sut/version)))
 
 (expect {:id sut/schema-type
          :type sut/root-type
          :name sut/schema-type-name
          :state :committed
          :context nil
-         :version "477ef70b9f4f23aa113dd01ce7301bdb1a6575a9ea180c16e1090a74be2604a0"
          :document {:definition "::any"}}
         (in (sut/get-document-by-name nil sut/root-type sut/schema-type-name)))
+(expect "b23c5525b96367b9264546da6ebfcc3abba121d26621faea6e4e592e2e600400"
+        (-> (sut/get-document-by-name nil sut/root-type sut/schema-type-name)
+            (sut/version)))
 
 ;; Should yield nil document for v0/null ID
 (expect nil (sut/get-document-by-id nil uuid/+null+))
@@ -66,9 +74,10 @@
 (expect {:type sut/schema-type}
         (in (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)))
-(expect {:version seeds/test-doc-root-version}
-        (in (sut/get-document-by-id seeds/test-context
-                                    seeds/test-doc-id)))
+(expect seeds/test-doc-root-version
+        (-> (sut/get-document-by-id seeds/test-context
+                                    seeds/test-doc-id)
+            (sut/version)))
 (expect {:document {:name "::string"}}
         (in (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)))
@@ -92,27 +101,29 @@
 
 
 ;; Should return newly written document with next version
-(expect {:version "d4e3dcd997ecef2b734eead7bf8a55a48c5302af7e90a41c3610bd34bbe0526e"}
-        (in (with-storage-transaction
-              [tx seeds/test-context]
-              (let [doc-record (sut/get-document-by-id seeds/test-context
-                                                       seeds/test-doc-id)
-                    new-doc (assoc-in doc-record [:document :age]
-                                      "::integer")]
-                (sut/write-document! tx new-doc)))))
+(expect "31f6d5f6a551d0449d9038388ae635227ac3385792d9633820fa281d69577eda"
+        (with-storage-transaction
+          [tx seeds/test-context]
+          (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                   seeds/test-doc-id)
+                new-doc (assoc-in doc-record [:document :age]
+                                  "::integer")]
+            (-> (sut/write-document! tx new-doc)
+                (sut/version)))))
 
 ;; Existing document should have old version if transaction not
 ;; committed
-(expect {:version seeds/test-doc-root-version}
-        (in (with-storage-transaction
-              [tx seeds/test-context]
-              (let [doc-record (sut/get-document-by-id seeds/test-context
-                                                       seeds/test-doc-id)
-                    new-doc (assoc-in doc-record [:document :age]
-                                      "::integer")]
-                (sut/write-document! tx new-doc)
-                (sut/get-document-by-id seeds/test-context
-                                        seeds/test-doc-id)))))
+(expect seeds/test-doc-root-version
+        (with-storage-transaction
+          [tx seeds/test-context]
+          (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                   seeds/test-doc-id)
+                new-doc (assoc-in doc-record [:document :age]
+                                  "::integer")]
+            (sut/write-document! tx new-doc)
+            (-> (sut/get-document-by-id seeds/test-context
+                                        seeds/test-doc-id)
+                (sut/version)))))
 
 ;; Newly written document should have new field
 (expect {:age "::integer"}
@@ -126,17 +137,18 @@
 
 ;; Committing the storage transaction should persist document changes,
 ;; including new version
-(expect {:version "d4e3dcd997ecef2b734eead7bf8a55a48c5302af7e90a41c3610bd34bbe0526e"}
-        (in (with-storage-transaction
-              [tx seeds/test-context]
-              (let [doc-record (sut/get-document-by-id seeds/test-context
-                                                       seeds/test-doc-id)
-                    new-doc (assoc-in doc-record [:document :age]
-                                      "::integer")]
-                (sut/write-document! tx new-doc)
-                (sut/commit-transaction! tx)
-                (sut/get-document-by-id seeds/test-context
-                                        seeds/test-doc-id)))))
+(expect "31f6d5f6a551d0449d9038388ae635227ac3385792d9633820fa281d69577eda"
+        (with-storage-transaction
+          [tx seeds/test-context]
+          (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                   seeds/test-doc-id)
+                new-doc (assoc-in doc-record [:document :age]
+                                  "::integer")]
+            (sut/write-document! tx new-doc)
+            (sut/commit-transaction! tx)
+            (-> (sut/get-document-by-id seeds/test-context
+                                        seeds/test-doc-id)
+                (sut/version)))))
 
 ;; Should return new state for document
 (expect {:state :opened}
@@ -148,8 +160,7 @@
                 (sut/write-document! tx doc-record)))))
 
 ;; Document state should be persisted
-(expect {:state :opened
-         :version "ab873da32ed04d03c31f7cb7fb7d27d8ff0f178475daed57233c34ba4421e332"}
+(expect {:state :opened}
         (in (with-storage-transaction
               [tx seeds/test-context]
               (let [doc-record (sut/get-document-by-id seeds/test-context
@@ -163,6 +174,21 @@
                 (sut/commit-transaction! tx)
                 (sut/get-document-by-id seeds/test-context
                                         seeds/test-doc-id)))))
+(expect "01d877fa590fb2c3fccbb3ffcb87f7b19935d3d8a4d41d4067950f184402250b"
+        (with-storage-transaction
+          [tx seeds/test-context]
+          (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                   seeds/test-doc-id)
+                new-doc (-> doc-record
+                            (assoc-in [:document :age]
+                                      "::integer")
+                            (assoc :state :opened))
+                updated-doc-record (sut/write-document! tx new-doc)]
+
+            (sut/commit-transaction! tx)
+            (-> (sut/get-document-by-id seeds/test-context
+                                        seeds/test-doc-id)
+                (sut/version)))))
 
 ;; Should be able to fetch older document version
 (expect {:name "::string"}
@@ -198,7 +224,7 @@
                                     seeds/test-doc-id)
             (:document (sut/get-document-version seeds/test-context
                                                  seeds/test-doc-id
-                                                 (:version updated-doc-record))))))
+                                                 (sut/version updated-doc-record))))))
 
 ;; Fetching non-existent version of a document should return nil
 (expect nil
@@ -289,20 +315,21 @@
                                                             "::integer"))]
                 (sut/commit-transaction! tx)))))
 
-(expect {:version "4b26614b8bab0fbd8c4b817ae0e0a95e38ea52d2f7379b044cdfc6a4a901c04f"}
-        (in (with-storage-transaction
-              [tx seeds/test-context]
-              (let [doc-record (sut/get-document-by-id seeds/test-context
-                                                       seeds/test-doc-id)
-                    new-doc1 (sut/write-document! tx
-                                                  (assoc-in doc-record [:document :age]
-                                                            "::integer"))
-                    new-doc2 (sut/write-document! tx
-                                                  (assoc-in new-doc1 [:document :height]
-                                                            "::integer"))]
-                (sut/commit-transaction! tx)
-                (sut/get-document-by-id seeds/test-context
-                                        seeds/test-doc-id)))))
+(expect "26d74f660af7c4c2c8e79e2c406980e8c407986def55399978a4c95d15f3e094"
+        (with-storage-transaction
+          [tx seeds/test-context]
+          (let [doc-record (sut/get-document-by-id seeds/test-context
+                                                   seeds/test-doc-id)
+                new-doc1 (sut/write-document! tx
+                                              (assoc-in doc-record [:document :age]
+                                                        "::integer"))
+                new-doc2 (sut/write-document! tx
+                                              (assoc-in new-doc1 [:document :height]
+                                                        "::integer"))]
+            (sut/commit-transaction! tx)
+            (-> (sut/get-document-by-id seeds/test-context
+                                        seeds/test-doc-id)
+                (sut/version)))))
 
 (expect {:age    "::integer"
          :height "::integer"}
