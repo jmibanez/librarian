@@ -68,7 +68,7 @@
                               :document   test-doc-type-schema})]
      (try
        (store/write-document! tx# test-doc-type-doc#)
-       (idx/create-index-for-documents
+       (idx/create-index-for-documents!
         (for [doc# ~docset]
           (store/write-document! tx# doc#)))
        (finally
@@ -83,7 +83,7 @@
      (try
        (do
          (store/write-document! tx# test-doc-type-doc)
-         (idx/create-index-for-documents
+         (idx/create-index-for-documents!
           (for [doc# ~docset]
             (store/write-document! tx# doc#)))
          ~@body)

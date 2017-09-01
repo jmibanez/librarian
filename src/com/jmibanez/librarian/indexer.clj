@@ -54,17 +54,12 @@
   :stop  nil)
 
 (declare create-document-index
-         run-indexer)
+         run-indexer
+         write-index-row!)
 
 
-(defn write-index-row! [c idx-row]
-  (tufte/p
-   ::write-index-row
-   (ensure-paths! c idx-row)
-   (ensure-values! c idx-row)
-   (insert-indexes! c idx-row)))
-
-(defn create-index-for-document [doc]
+(s/defn create-index-for-document!
+  [doc :- Document]
   (if-not (nil? doc)
     (tufte/p
      ::create-index-for-document
@@ -72,29 +67,62 @@
        (doseq [idx-row (create-document-index doc)]
          (write-index-row! c idx-row))))))
 
-(defn create-index-for-documents [doc-set]
+(s/defn create-index-for-documents!
+  [doc-set :- [Document]]
   (tufte/p
-   ::create-index-for-documents
+   ::create-index-for-documents!
    (jdbc/with-db-transaction [c config/*datasource*]
      (let [idx-rows (apply concat
                            (map create-document-index doc-set))]
        (doseq [idx-row idx-rows]
          (write-index-row! c idx-row))))))
 
-(defn take-from-queue! []
+
+
+(s/defschema Index {:document_id c/Id
+                    :version     s/Str
+                    :path        s/Str
+                    :value       s/Any})
+(s/defschema IndexList #{Index})
+
+
+(declare flatten-path
+         index-row)
+(s/defn create-document-index :- IndexList
+  [doc :- Document]
+
+  (let [doc-id   (:id doc)
+        version  (:version doc)
+        document (:document doc)]
+    (debug "document to index=>" document)
+    (if-not (nil? document)
+      (spy :debug
+           (->> document
+                (flatten-path [])
+                (map (index-row doc-id version))
+                (flatten)
+                (set)))
+
+      (do
+        (warn "Cannot create index for unknown or unretrievable document")
+        []))))
+
+
+;; Indexer thread
+(defn- take-from-queue! []
   (dosync
    (let [head (peek @*indexer-queue*)
          tail (alter *indexer-queue* pop)]
      head)))
 
-(defn run-indexer []
+(defn- run-indexer []
   (tufte/p
    ::indexer
    (debug "Indexer has awoken...")
    (loop [i 0]
      (if-not (nil? (peek @*indexer-queue*))
        (do
-         (create-index-for-document (take-from-queue!))
+         (create-index-for-document! (take-from-queue!))
          (recur (inc i)))
 
        (when (> i 0)
@@ -158,31 +186,13 @@
 ;; (def index-type #uuid "1092c705-e1f8-4260-b6db-50e46d136ce5")
 ;; (def index-type-name "index")
 
-(s/defschema Index {:document_id c/Id
-                    :version     s/Str
-                    :path        s/Str
-                    :value       s/Any})
-(s/defschema IndexList #{Index})
+(defn write-index-row! [c idx-row]
+  (tufte/p
+   ::write-index-row
+   (ensure-paths! c idx-row)
+   (ensure-values! c idx-row)
+   (insert-indexes! c idx-row)))
 
-(declare flatten-path
-         index-row)
-(s/defn create-document-index :- IndexList
-  [doc :- Document]
-
-  (let [doc-id   (:id doc)
-        version  (:version doc)
-        document (:document doc)]
-    (debug "document to index=>" document)
-    (if-not (nil? document)
-      (spy :debug
-           (->> document
-                (flatten-path [])
-                (map (index-row doc-id version))
-                (set)))
-
-      (do
-        (warn "Cannot create index for unknown or unretrievable document")
-        []))))
 
 (defn- to-indexed-seqs [coll]
   (if (map? coll)
@@ -201,17 +211,21 @@
     [path step]))
 
 (defn path-key->json-path [key-path]
-  (str "$" (str/join "" (for [key key-path]
-                          (if (vector? key)
-                            (first key)
-                            (str "." (name key)))))))
+  (let [fn-dotted-key-path (fn [f]
+                             (for [key key-path]
+                               (if (vector? key)
+                                 (f key)
+                                 (str "." (name key)))))]
+    (set (for [f [first #(str "[" (second %) "]")]]
+           (str "$" (str/join "" (fn-dotted-key-path f)))))))
 
 (defn index-row [doc-id version]
   (fn [[k v]]
-    {:document_id  doc-id
-     :version      version
-     :path         (path-key->json-path k)
-     :value        (json/generate-string v)}))
+    (for [p (path-key->json-path k)]
+      {:document_id  doc-id
+       :version      version
+       :path         p
+       :value        (json/generate-string v)})))
 
 
 (defn clear-documents-from-queue [q docs]
