@@ -21,6 +21,10 @@
   [(s/one (s/eq "conditional:") "cond-key")
    [(s/one (s/maybe s/Str) "cond") (s/recursive #'TypeDefinition)]])
 
+(s/defschema TypeRecursive
+  [(s/one (s/eq "recursive:") "recurse-key")
+   (s/one s/Str "type-recurse")])
+
 (s/defschema TypeSpecialVector
   (s/conditional #(contains? sequence-keys (first %))
                  [(s/one (apply s/enum (keys sequence-keys)) "key") (s/recursive #'TypeDefinition)]
@@ -31,9 +35,8 @@
                  #(= "conditional:" (first %))
                  TypeConditional
 
-                 ;; #(= "recursive:" (first %))
-                 ;; TypeRecursive
-))
+                 #(= "recursive:" (first %))
+                 TypeRecursive))
 
 (s/defschema TypeVector
   (s/conditional #(string? (first %)) TypeSpecialVector
