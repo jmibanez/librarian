@@ -113,18 +113,38 @@ DELETE FROM transaction_document_item
 WHERE transaction_id = :id;
 
 -- :name clear-unreferenced-documents! :! :n
-WITH document_refs AS (
+WITH RECURSIVE document_refs AS (
     SELECT
-        DISTINCT document_id, version
+      d.id, d.previous, d.version
     FROM
-        transaction_document_item
+      document d
+    JOIN
+      document_header h
+      ON
+        h.id = d.id
+    WHERE
+      (d.id, d.version) IN (
+        SELECT DISTINCT document_id, version
+        FROM
+          transaction_document_item
+      )
+
+    UNION
+
+    SELECT
+      prev.id, prev.previous, prev.version
+    FROM
+      document prev
+    JOIN
+      document_refs rr
+      ON rr.previous = prev.version
 ), unrefed_version AS (
     DELETE FROM document
-    WHERE (id, version) NOT IN (
-       SELECT
-           document_id, version
-       FROM
-           document_refs
+    WHERE version NOT IN (
+        SELECT
+            DISTINCT version
+        FROM
+            document_refs
     )
 )
 DELETE FROM document_header
@@ -132,7 +152,7 @@ WHERE
     current_version IS NULL
     AND id NOT IN (
         SELECT
-            document_id
+            DISTINCT id
         FROM
             document_refs
     )
