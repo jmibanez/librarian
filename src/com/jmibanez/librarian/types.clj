@@ -70,7 +70,7 @@
    type-name      :- s/Str]
   (find-type-by-name owning-context type-name))
 
-(declare write-type-definition)
+(declare write-type-definition!)
 (s/defn create-type :- Type
   [owning-context :- c/Context
    type-name      :- s/Str
@@ -80,14 +80,14 @@
                                     :owner owning-context
                                     :name type-name
                                     :definition definition})]
-    (write-type-definition type-def)))
+    (write-type-definition! type-def)))
 
 (s/defn update-type-definition :- Type
   [owning-context :- c/Context
    type-id        :- c/Id
    new-definition :- s/Any]
   (let [type-def (find-type-by-id owning-context type-id)]
-    (write-type-definition
+    (write-type-definition!
      (assoc type-def :definition new-definition))))
 
 
@@ -127,7 +127,16 @@
                                :owner (:context type-doc))))
     nil))
 
-(defn write-type-definition [type-def])
+(defn write-type-definition! [type-def]
+  (let [transaction (store/start-transaction! (:owner type-def))
+        type-doc (->> {:id       (:id type-def)
+                       :name     (:name type-def)
+                       :context  (:owner type-def)
+                       :state    :new
+                       :document {:definition (:definition type-def)}}
+                      (store/map->Document))]
+    (store/write-document! transaction type-doc)
+    (store/commit-transaction! transaction)))
 
 (def type-schemas (atom {}))
 (def type-schema-references (agent {}))
