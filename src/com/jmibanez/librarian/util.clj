@@ -5,11 +5,11 @@
 (timbre/refer-timbre)
 
 (defn cache-result [[c cache-key] result]
-  (dosync
-   (if (cache/has? @c cache-key)
-     (swap! c cache/hit cache-key)
-     (swap! c cache/miss cache-key result))
-   (cache/lookup @c cache-key)))
+  (if (cache/has? @c cache-key)
+    (swap! c cache/hit cache-key)
+    (when-not (nil? result)
+      (swap! c cache/miss cache-key result)))
+  (cache/lookup @c cache-key))
 
 
 (defmacro defcacheable [name args cache-factory & body]
