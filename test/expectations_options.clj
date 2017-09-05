@@ -3,7 +3,7 @@
             [com.jmibanez.librarian
              [indexer :as idx]
              [store :as store]
-             [migrations :refer [do-migrate]]
+             [migrations :refer [migrate]]
              [seeds :as seed]]
             [schema.core :as s]
             [mount.core :as mount]))
@@ -13,10 +13,10 @@
 (defn boot-mounts
   {:expectations-options :before-run}
   []
+  (migrate)
   (mount/start-without #'idx/*indexer-pool*
                        #'idx/indexer-chan
-                       #'store/gc-reaper)
-  (do-migrate))
+                       #'store/gc-reaper))
 
 (defn test-context
   {:expectations-options :in-context}
