@@ -9,7 +9,9 @@
             [lein-ring "0.9.7"]]
   :profiles {:project/dev {:dependencies [[expectations "2.0.9"]
                                           [javax.servlet/servlet-api "2.5"]
-                                          [ring/ring-mock "0.3.0"]]}
+                                          [ring/ring-mock "0.3.0"]
+                                          [org.clojure/test.check "0.9.0"]
+                                          [prismatic/schema-generators "0.1.0"]]}
              :project/test {}
 
              :profiles/dev {}
