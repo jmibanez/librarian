@@ -2,10 +2,14 @@
   (:require [taoensso.timbre :as timbre]
             [clj-uuid :as uuid]
             [schema.core :as s]
+            [schema.coerce :as coerce]
+            [schema.utils :as s-util]
             [com.jmibanez.librarian
              [core-schema :as c]
              [config :as config]
-             [store :as store]]))
+             [store :as store]])
+  (:import [com.jmibanez.librarian.store Document]
+           [schema.utils ErrorContainer]))
 
 (timbre/refer-timbre)
 
@@ -92,26 +96,45 @@
 
 
 (declare resolve-type-ref)
-(s/defn validate-against-type :- s/Any
+(s/defn validate-against-named-type :- s/Any
   [owning-context :- c/Context
    type-name      :- s/Str
-   document       :- s/Any]
-  (let [schema-def (resolve-type-ref owning-context type-name)]
-    (s/validate schema-def document)))
+   v              :- s/Any]
+  (let [schema-def (resolve-type-ref owning-context
+                                     type-name)]
+    (s/validate schema-def v)))
 
-
+(s/defn validate-document-against-type :- (s/cond-pre Document
+                                                      {:error s/Any})
+  [owning-context :- c/Context
+   document       :- Document]
+  (let [type-id    (:type document)
+        schema-def (resolve-type-ref owning-context
+                                     type-id)
+        coercer    (coerce/coercer schema-def
+                                   coerce/json-coercion-matcher)
+        doc        (:document document)]
+    (if-let [err (s/check schema-def doc)]
+      {:error err}
+      (assoc document :document (coercer doc)))))
 
 (defn find-type-by-id [owning-context type-id]
-  (if-let [type-doc (store/get-document-by-id owning-context type-id)]
-    (if-not (= (:type type-doc)
-               store/schema-type)
-      (throw (Exception. "Not a valid type document"))
+  (if (= store/schema-type type-id)
+    (strict-map->Type {:definition "::any"
+                       :id       store/schema-type
+                       :name     "::schema"
+                       :owner    nil})
 
-      (strict-map->Type (assoc (:document type-doc)
-                               :id (:id type-doc)
-                               :name (:name type-doc)
-                               :owner (:context type-doc))))
-    nil))
+    (if-let [type-doc (store/get-document-by-id owning-context type-id)]
+      (if-not (= (:type type-doc)
+                 store/schema-type)
+        (throw (Exception. "Not a valid type document"))
+
+        (strict-map->Type (assoc (:document type-doc)
+                                 :id (:id type-doc)
+                                 :name (:name type-doc)
+                                 :owner (:context type-doc))))
+      nil)))
 
 (defn find-type-by-name [owning-context name]
   (if-let [type-doc (store/get-document-by-name owning-context
@@ -138,8 +161,9 @@
     (store/write-document! transaction type-doc)
     (store/commit-transaction! transaction)))
 
-(def type-schemas (atom {}))
-(def type-schema-references (agent {}))
+(def type-schemas (ref {}))
+(def type-ids     (ref {}))
+(def type-schema-references (ref {}))
 
 (def core-schema-types
   {"::string"  s/Str
@@ -149,34 +173,56 @@
    "::uuid"    s/Uuid
    "::any"     s/Any})
 
+(declare create-type-context
+         destroy-type-context)
+(defmacro with-type-context [context & body]
+  `(try
+     (create-type-context ~context)
+     ~@body
+     (finally
+       (destroy-type-context ~context))))
+
 (defn create-type-context [context]
-  (swap! type-schemas
-         assoc context (agent {})))
+  (dosync
+   (alter type-schemas
+          assoc context (ref {}))
+   (alter type-ids
+          assoc context (ref {}))
+   (alter type-schema-references assoc context {})))
 
 (defn destroy-type-context [context]
-  (swap! type-schemas
-         dissoc context))
+  (dosync
+   (alter type-schema-references
+          dissoc context)
+   (alter type-ids
+          dissoc context)
+   (alter type-schemas
+          dissoc context)))
 
-(defn create-type-schema-references-for-context [context]
-  (send type-schema-references assoc context {}))
 
-(defn destroy-type-schema-references-for-context [context]
-  (send type-schema-references dissoc context))
-
-(defn bind-type-in-context [context type-name schema-def]
-  (let [type-context (get @type-schemas context)]
-    (send type-context assoc type-name schema-def)))
+(defn bind-type-in-context [context type-id type-name schema-def]
+  (let [type-context (get @type-schemas context)
+        type-ids     (get @type-ids context)]
+    (dosync
+     (alter type-context assoc type-name schema-def)
+     (alter type-ids assoc type-id type-name))))
 
 (defn add-type-reference [context type-name
                           referring-type-name]
-  (if-let [ref-list (get-in @type-schema-references [context
-                                                     type-name])]
-    (send ref-list conj referring-type-name)
-    (send type-schema-references assoc-in
-          [context type-name] (agent []))))
+  (dosync
+   (if-let [ref-list (get-in @type-schema-references [context
+                                                      type-name])]
+     (alter ref-list conj referring-type-name)
+     (alter type-schema-references assoc-in
+            [context type-name] (ref [])))))
 
 (declare compile-type-definition)
-(defn resolve-type-ref [context type-name]
+(defmulti resolve-type-ref
+  (fn [_ type-key]
+    (type type-key)))
+(defmethod resolve-type-ref
+  String
+  [context type-name]
   (let [type-context (get @type-schemas context)]
     (if-let [core-schema-def (get core-schema-types type-name)]
       core-schema-def
@@ -184,6 +230,16 @@
       (if-let [schema-def (get @type-context type-name)]
         schema-def
         (compile-type-definition context type-name)))))
+
+(defmethod resolve-type-ref
+  java.util.UUID
+  [context type-id]
+  (let [type-context (get @type-schemas context)
+        type-id-map  (get @type-ids context)]
+    (if-let [type-name (get @type-id-map type-id)]
+      (resolve-type-ref context type-name)
+
+      (compile-type-definition context type-id))))
 
 (defmulti compile-type-def
   (fn [context this-type-name definition]
@@ -286,24 +342,45 @@
                clojure.lang.ISeq)
 
 
-(defn invalidate-type-refs [context ref-list]
+(defn invalidate-type-refs [ref-list context]
   (for [ref ref-list]
     (compile-type-definition context ref))
   [])
 
 (defn invalidate-type [context type-name]
   (let [type-context (get @type-schemas context)]
-    (send type-context dissoc type-name)))
+    (dosync
+     (alter type-context dissoc type-name))))
 
-(defn compile-type-definition [context type-name]
-  (let [type-def (find-type-by-name context type-name)
-        schema-def (compile-type-def context
-                                     type-name
-                                     (:definition type-def))]
-    (bind-type-in-context context type-name schema-def)
+(defmulti compile-type-definition
+  (fn [context type-key]
+    (type type-key)))
+(defmethod compile-type-definition
+  java.util.UUID
+  [context type-id]
+
+  (->> (find-type-by-id context type-id)
+       (compile-type-definition context)))
+
+(defmethod compile-type-definition
+  String
+  [context type-name]
+
+  (->> (find-type-by-name context type-name)
+       (compile-type-definition context)))
+
+
+(defmethod compile-type-definition
+  Type
+  [context type-def]
+  (let [type-id     (:id type-def)
+        type-name   (:name type-def)
+        def         (:definition type-def)
+        schema-def  (compile-type-def context type-name def)]
+    (bind-type-in-context context type-id type-name schema-def)
     (if-let [ref-list (get-in @type-schema-references [context
                                                        type-name])]
-      (send ref-list invalidate-type-refs))
+      (dosync
+       (alter ref-list invalidate-type-refs context)))
+
     schema-def))
-
-
