@@ -55,7 +55,7 @@
     (let [state     (clojure.core/name state)
           doc       (canonical-representation document)
           json-doc  (json/generate-string doc)]
-      (spy :debug (digest/sha-256 (str state json-doc))))))
+      (spy :trace (digest/sha-256 (str state json-doc))))))
 
 
 (def TransactionState (s/enum :started
@@ -224,7 +224,7 @@
              doc (:document document)
              state (:state document)
              prev-version (current-doc-version c transaction document)
-             doc-version (spy :debug (version document))
+             doc-version (spy :trace (version document))
              doc-version-row (insert-document-version!
                               c {:id       (:id document)
                                  :document doc
