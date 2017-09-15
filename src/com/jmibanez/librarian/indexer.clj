@@ -6,6 +6,8 @@
             [schema.core :as s]
             [mount.core :refer [defstate]]
 
+            [overtone.at-at :as at-at]
+
             [clojure.java.jdbc :as jdbc]
             [clojure.data :as data]
             [cheshire.core :as json]
@@ -14,10 +16,11 @@
             [clojure.core.async :refer [chan close! go
                                         go-loop thread
                                         >!! >! <!! <!! <!
-                                        alts!
+                                        alts! tap untap
                                         sliding-buffer]]
             [com.jmibanez.librarian
              [config :as config]
+             [core-schema :as c]
              [store :as store]])
   (:import [com.jmibanez.librarian.store Document]))
 
@@ -27,126 +30,60 @@
 
 (declare start-indexer!
          stop-indexer!)
-(defstate indexer
-  :start (start-indexer!)
-  :stop  (stop-indexer!))
 
+(defstate ^:dynamic *indexer-pool*
+  :start (at-at/mk-pool)
+  :stop  (at-at/stop-and-reset-pool!
+          *indexer-pool* :strategy :stop))
+
+
+(defstate indexer-chan
+  :start (start-indexer!)
+  :stop  (stop-indexer! indexer-chan))
+
+(declare scan-for-reindexing)
+(defstate ^:dynamic *indexer-queue*
+  :start (scan-for-reindexing)
+  :stop  (dosync
+          (ref-set *indexer-queue*
+                   clojure.lang.PersistentQueue/EMPTY)))
+
+(declare reload-state-from-db)
+(defstate ^:dynamic *indexer-state*
+  :start (reload-state-from-db)
+  :stop  nil)
 
 (declare create-document-index
-         run-indexer)
-
-(defn add-document-to-index [state-map context transaction document]
-  (let [tx-id     (:id transaction)
-        state-key [context tx-id]
-        new-state (if (nil? (get state-map state-key))
-                    (assoc state-map state-key [document])
-                    (update state-map state-key conj document))]
+         run-indexer
+         write-index-row!)
 
 
-    (if (= (count (get state-map state-key))
-           config/indexer-batch-size)
-      ;; Flush work queue
-      (send-off indexer
-                run-indexer context transaction))
-
-    new-state))
-
-
-(defn create-index-for-documents [doc-set]
-  (tufte/p
-   ::create-index-for-documents
-   (let [idx-list (apply concat
-                         (spy :debug (map create-document-index
-                                          doc-set)))]
-
+(s/defn create-index-for-document!
+  [doc :- Document]
+  (if-not (nil? doc)
+    (tufte/p
+     ::create-index-for-document
      (jdbc/with-db-transaction [c config/*datasource*]
-       (debug "idx-list->" (vec idx-list))
-       (doseq [idx-row idx-list]
-         (debug "idx=>" idx-row)
-         (ensure-paths! c idx-row)
-         (ensure-values! c idx-row)
-         (insert-indexes! c idx-row))))))
+       (doseq [idx-row (create-document-index doc)]
+         (write-index-row! c idx-row))))))
 
-(defn run-indexer [state-map context transaction]
-  (let [tx-id     (:id transaction)
-        state-key [context tx-id]]
-
-    (if-let [doc-set (get state-map state-key)]
-      (do
-        (if (<= (count doc-set)
-                config/indexer-batch-size)
-          (spy :debug (create-index-for-documents doc-set))
-
-          ;; Split into batches
-          (tufte/p
-           ::index-batch
-           (doseq [batch (partition config/indexer-batch-size
-                                    doc-set)]
-             (info "Indexing batch of " (count batch))
-             (spy :debug (create-index-for-documents batch)))))
-
-        (dissoc state-map state-key))
-
-      ;; Bail with warning if transaction not found in state
-      (do
-        (warn "Transaction" tx-id "not found in indexer state; ignoring")
-        state-map))))
+(s/defn create-index-for-documents!
+  [doc-set :- [Document]]
+  (tufte/p
+   ::create-index-for-documents!
+   (jdbc/with-db-transaction [c config/*datasource*]
+     (let [idx-rows (mapcat create-document-index doc-set)]
+       (doseq [idx-row idx-rows]
+         (write-index-row! c idx-row))))))
 
 
-(defstate indexer-alive
-  :start true
-  :stop  false)
 
-(defn add-index-job [[context transaction] doc-list-ref
-                     prev-doc-list new-doc-list]
-  (let [[old-docs new-docs all-docs] (data/diff prev-doc-list
-                                                new-doc-list)]
-    (doseq [document (filter #(not (nil? %)) new-docs)]
-      (if-not (nil? document)
-        (send-off indexer
-                  add-document-to-index context transaction document)))))
-
-(defn indexer-watcher [_ store-state-ref
-                       prev-store-state new-store-state]
-  (let [[_ transactions _] (data/diff prev-store-state
-                                      new-store-state)]
-    (doseq [[tx-id tx-state-diff] transactions]
-      (if-not (nil? tx-state-diff)
-        (let [{transaction :transaction
-               context     :context
-               tx-docs     :documents} (get new-store-state tx-id)]
-          (condp = (:state transaction)
-            :committed
-            (do
-              (send-off indexer
-                        run-indexer context transaction)
-              (remove-watch tx-docs [context transaction]))
-
-            :cancelled
-            (remove-watch tx-docs [context transaction])
-
-            :started
-            (do
-              (send-off indexer assoc [context tx-id] [])
-              (add-watch tx-docs [context transaction] add-index-job))
-
-            nil))))))
-
-(defn start-indexer! []
-  (add-watch store/store-state ::indexer indexer-watcher)
-  (agent {}))
-
-(defn stop-indexer! []
-  (remove-watch store/store-state ::indexer))
-
-;; (def index-type #uuid "1092c705-e1f8-4260-b6db-50e46d136ce5")
-;; (def index-type-name "index")
-
-(s/defschema Index {:document_id store/Id
+(s/defschema Index {:document_id c/Id
                     :version     s/Str
                     :path        s/Str
                     :value       s/Any})
-(s/defschema IndexList [Index])
+(s/defschema IndexList #{Index})
+
 
 (declare flatten-path
          index-row)
@@ -154,7 +91,7 @@
   [doc :- Document]
 
   (let [doc-id   (:id doc)
-        version  (:version doc)
+        version  (store/version doc)
         document (:document doc)]
     (debug "document to index=>" document)
     (if-not (nil? document)
@@ -162,12 +99,99 @@
            (->> document
                 (flatten-path [])
                 (map (index-row doc-id version))
-                (sort #(compare (first %1)
-                                (first %2)))))
+                (flatten)
+                (set)))
 
       (do
         (warn "Cannot create index for unknown or unretrievable document")
         []))))
+
+
+;; Indexer thread
+(defn- take-from-queue! []
+  (dosync
+   (let [head (peek @*indexer-queue*)
+         tail (alter *indexer-queue* pop)]
+     head)))
+
+(defn- run-indexer []
+  (tufte/p
+   ::indexer
+   (debug "Indexer has awoken...")
+   (loop [i 0]
+     (if-not (nil? (peek @*indexer-queue*))
+       (do
+         (create-index-for-document! (take-from-queue!))
+         (recur (inc i)))
+
+       (when (pos? i)
+         (info "Indexed" i "documents"))))))
+
+
+(defstate indexer-alive
+  :start true
+  :stop  false)
+
+
+(defn queue-for-indexing [transaction-id doc]
+  (dosync
+   (alter *indexer-queue* conj doc)
+   (alter *indexer-state*
+          update transaction-id conj
+          [(:id doc) (store/version doc)])
+   true))
+
+
+(defn clear-indexer-state [transaction-id]
+  (dosync
+   (alter *indexer-state*
+          dissoc transaction-id)))
+
+(declare unindex-transaction-documents!)
+(defn dispatch-store-event [ev]
+  (if-not (nil? ev)
+    (let [{:keys [event context payload transaction]} ev]
+      (debug "Event!" ev)
+      (condp = event
+        :document-write     (queue-for-indexing transaction
+                                                payload)
+        :transaction-commit (clear-indexer-state (:id payload))
+        :transaction-cancel (unindex-transaction-documents!
+                             payload)
+        true))))
+
+
+(defn start-indexer! []
+  (let [store-events (chan)]
+    (tap store/*events* store-events)
+    (go-loop [ev (<! store-events)]
+      (if (dispatch-store-event ev)
+        (recur (<! store-events))))
+
+    (doseq [i (range config/indexer-threads)]
+      (at-at/every config/indexer-period
+                   run-indexer
+                   *indexer-pool*
+                   :desc (str "Indexer #" i)
+                   :initial-delay (+ config/indexer-period
+                                     (* i 500))))
+
+    (info "Indexer started.")
+    store-events))
+
+(defn stop-indexer! [indexer-chan]
+  (untap store/*events* indexer-chan))
+
+;; (def index-type #uuid "1092c705-e1f8-4260-b6db-50e46d136ce5")
+;; (def index-type-name "index")
+
+(defn write-index-row! [c idx-row]
+  (tufte/p
+   ::write-index-row
+   (ensure-paths! c idx-row)
+   (ensure-values! c idx-row)
+   (insert-indexes! c idx-row)))
+
 
 (defn- to-indexed-seqs [coll]
   (if (map? coll)
@@ -186,15 +210,82 @@
     [path step]))
 
 (defn path-key->json-path [key-path]
-  (str "$" (str/join "" (for [key key-path]
-                          (if (vector? key)
-                            (first key)
-                            (str "." (name key)))))))
+  (let [fn-dotted-key-path (fn [f]
+                             (for [key key-path]
+                               (if (vector? key)
+                                 (f key)
+                                 (str "." (name key)))))]
+    (set (for [f [first #(str "[" (second %) "]")]]
+           (str "$" (str/join "" (fn-dotted-key-path f)))))))
 
 (defn index-row [doc-id version]
   (fn [[k v]]
-    {:document_id  doc-id
-     :version      version
-     :path         (path-key->json-path k)
-     :value        (json/generate-string v)}))
+    (for [p (path-key->json-path k)]
+      {:document_id  doc-id
+       :version      version
+       :path         p
+       :value        (json/generate-string v)})))
 
+
+(defn clear-documents-from-queue [q docs]
+  (let [doc-set (set docs)
+        filtered-q (remove #(contains? doc-set
+                                       [(:id %) (store/version %)])
+                           q)]
+
+    (apply conj clojure.lang.PersistentQueue/EMPTY filtered-q)))
+
+
+(defn unindex-transaction-documents!
+  [transaction]
+
+  (jdbc/with-db-transaction [c config/*datasource*]
+    (info "Cancelling on-going index of documents in" transaction)
+
+    (let [transaction-id (:id transaction)
+          documents-in-transaction (get @*indexer-state* transaction-id)]
+
+      ;; First, grovel through the existing indexer queue to remove all
+      ;; documents related to this transaction
+      (dosync
+       (let []
+         (alter *indexer-queue*
+                clear-documents-from-queue documents-in-transaction)
+         (alter *indexer-state* dissoc transaction-id)))
+
+      ;; Next, clear out the indexes for those documents
+      (info "Docs to invalidate" (count documents-in-transaction))
+      (doseq [[doc-id version] documents-in-transaction]
+        (spy :debug (invalidate-index-for-document-and-version! c {:id doc-id
+                                                                   :version version})))))
+
+  true)
+
+(defn scan-for-reindexing []
+  (let [indexer-queue (ref clojure.lang.PersistentQueue/EMPTY)]
+
+    (jdbc/with-db-transaction [c config/*datasource*]
+      (let [unindexed (map store/doc-row->Document
+                           (select-unindexed-documents c))]
+        (info "Reindexing" (count unindexed) "documents")
+        (dosync (alter indexer-queue
+                       (fn [q rest]
+                         (apply conj q rest))
+                       unindexed))))
+    indexer-queue))
+
+(defn reload-state-from-db []
+  (let [indexer-state (ref {})]
+
+    (jdbc/with-db-transaction [c config/*datasource*]
+      (let [open-documents (map (juxt :transaction_id
+                                      :document_id
+                                      :version)
+                                (select-documents-for-open-transactions c))]
+        (dosync
+         (doseq [[transaction-id document-id version] open-documents]
+           (alter indexer-state
+                  update transaction-id conj
+                  [document-id version])))))
+
+    indexer-state))

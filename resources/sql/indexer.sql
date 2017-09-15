@@ -31,3 +31,36 @@ JOIN
        AND jsonb(:value) = idx_val.value
 WHERE p.path = :path
 ON CONFLICT DO NOTHING;
+
+-- :name invalidate-index-for-document-and-version! :!
+DELETE FROM document_index
+WHERE document_id = :id
+      AND version = :version;
+
+-- :name select-unindexed-documents
+SELECT
+  h.id, h.type, h.name, h.context, d.version,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
+FROM
+  document_header h
+JOIN
+  document d
+  ON h.id = d.id
+WHERE
+  (h.id, d.version) NOT IN (
+     SELECT DISTINCT document_id, version
+     FROM document_index
+  );
+
+-- :name select-documents-for-open-transactions
+SELECT
+  td.transaction_id, td.document_id, td.version
+FROM
+  transaction_document_item td
+JOIN
+  transaction_stub t
+  ON t.id = td.transaction_id
+WHERE
+  t.state IN ('started', 'dirty', 'conflict')
+GROUP BY td.transaction_id, td.document_id, td.version;

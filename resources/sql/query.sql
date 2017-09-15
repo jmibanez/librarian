@@ -1,8 +1,8 @@
 -- :name query-document-full :? :*
 SELECT
-  h.id, h.type, h.name, h.state, h.context, d.version,
-  h.date_created, h.date_last_modified,
-  d.document
+  h.id, h.type, h.name, h.context, d.version,
+  h.date_created,
+  d.document, d.state, d.date_modified AS date_last_modified
 FROM
   document_header h
 JOIN

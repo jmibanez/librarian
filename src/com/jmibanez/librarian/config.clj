@@ -25,7 +25,11 @@
 
 (def event-buffer-size (Integer/parseInt (env :event-buffer-size "10")))
 
-(def indexer-batch-size (Integer/parseInt (env :indexer-batch-size "1000")))
+(def store-gc-period (Integer/parseInt (env :store-gc-period "1000")))
+
+(def indexer-batch-size (Integer/parseInt (env :indexer-batch-size "100")))
+(def indexer-period (Integer/parseInt (env :indexer-period "5000")))
+(def indexer-threads (Integer/parseInt (env :indexer-threads "2")))
 
 (defn default-sysout-appender
   [data]

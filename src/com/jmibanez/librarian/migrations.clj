@@ -12,15 +12,16 @@
   :start {:datastore (jdbc/sql-database config/*datasource*)
           :migrations (jdbc/load-resources "migrations")})
 
-(defn do-migrate []
-  (repl/migrate *migration-config*))
-
 (defn migrate []
-  (mount/start)
-  (do-migrate)
-  (mount/stop))
+  (mount/start #'config/*datasource*
+               #'*migration-config*)
+  (try
+    (repl/migrate *migration-config*)
+    (finally
+      (mount/stop))))
 
 (defn rollback [& rest]
-  (mount/start)
+  (mount/start #'config/*datasource*
+               #'*migration-config*)
   (apply repl/rollback *migration-config* rest)
   (mount/stop))

@@ -19,8 +19,10 @@
             [json-path]
             [json-path.parser :as path-parser]
 
-            [com.jmibanez.librarian.store :as store]
-            [com.jmibanez.librarian.types :as t])
+            [com.jmibanez.librarian
+             [core-schema :as c]
+             [store :as store]
+             [types :as t]])
   (:import [com.jmibanez.librarian.store Document Transaction]
            [honeysql.types SqlParam]
            [java.util Date]))
@@ -73,7 +75,7 @@
 
 (s/defn create-query-document! :- Document
   "Construct a storage Document from the given query"
-  [context     :- store/Context
+  [context     :- c/Context
    transaction :- Transaction
    query-doc   :- (s/maybe QueryDocument)]
 
@@ -91,9 +93,9 @@
 (s/defn update-query-document! :- Document
   "Update the given query document. Query name cannot be
   changed."
-  [context     :- store/Context
+  [context     :- c/Context
    transaction :- Transaction
-   query-id    :- store/Id
+   query-id    :- c/Id
    query-doc   :- (s/maybe QueryDocument)]
 
   (if-let [doc (store/get-document-by-id context query-id)]
@@ -107,33 +109,31 @@
     (create-query-document! context transaction query-doc)))
 
 (s/defn get-query-document-by-id :- QueryDocument
-  [context   :- store/Context
-   query-id  :- store/Id]
-  (if-let [doc (store/get-document-by-id context query-id)]
+  [context   :- c/Context
+   query-id  :- c/Id]
+  (when-let [doc (store/get-document-by-id context query-id)]
     (if-not (= query-type
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))
-
-    nil))
+      (:document doc))))
 
 (s/defn get-query-document-by-name :- QueryDocument
-  [context    :- store/Context
+  [context    :- c/Context
    query-name :- s/Str]
-  (if-let [doc (store/get-document-by-name context query-name)]
+  (when-let [doc (store/get-document-by-name context
+                                           query-type
+                                           query-name)]
     (if-not (= query-type
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))
-
-    nil))
+      (:document doc))))
 
 
 ;; Generators for default queries
 (s/defn gen-query-get-documents-of-type :- QueryDocument
-  [context     :- store/Context
+  [context     :- c/Context
    transaction :- Transaction
    type        :- s/Uuid
    type-name   :- s/Str
@@ -235,8 +235,8 @@
         sort-key  (get-in query-doc [:query :sort])
         sort-sql  (->sort-sql-expression sort-key)
         root-cond (rule->sql-fragment root-rule)
-        sql       (-> base-document-query-map
-                      (sqlgen/where root-cond))]
+        sql       (sqlgen/where base-document-query-map
+                                root-cond)]
     (strict-map->Query {:doc  query-doc
                         :type type
                         :sort sort-sql
@@ -349,8 +349,8 @@
         index-selector [:and [:like :idx.path path-subselector]
                              [:= :idx.value (honeysql/call :jsonb
                                                            (json/generate-string rhs))]]
-        selector-expr (-> index-query-map
-                          (sqlgen/where index-selector))]
+        selector-expr (sqlgen/where index-query-map
+                                    index-selector)]
     [:in :h.id selector-expr]))
 
 (defn path->json-subdocument
