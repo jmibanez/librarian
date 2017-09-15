@@ -72,8 +72,7 @@
   (tufte/p
    ::create-index-for-documents!
    (jdbc/with-db-transaction [c config/*datasource*]
-     (let [idx-rows (apply concat
-                           (map create-document-index doc-set))]
+     (let [idx-rows (mapcat create-document-index doc-set)]
        (doseq [idx-row idx-rows]
          (write-index-row! c idx-row))))))
 
@@ -125,7 +124,7 @@
          (create-index-for-document! (take-from-queue!))
          (recur (inc i)))
 
-       (when (> i 0)
+       (when (pos? i)
          (info "Indexed" i "documents"))))))
 
 
@@ -266,8 +265,8 @@
   (let [indexer-queue (ref clojure.lang.PersistentQueue/EMPTY)]
 
     (jdbc/with-db-transaction [c config/*datasource*]
-      (let [unindexed (->> (select-unindexed-documents c)
-                           (map store/doc-row->Document))]
+      (let [unindexed (map store/doc-row->Document
+                           (select-unindexed-documents c))]
         (info "Reindexing" (count unindexed) "documents")
         (dosync (alter indexer-queue
                        (fn [q rest]
@@ -279,10 +278,10 @@
   (let [indexer-state (ref {})]
 
     (jdbc/with-db-transaction [c config/*datasource*]
-      (let [open-documents (->> (select-documents-for-open-transactions c)
-                                (map (juxt :transaction_id
-                                           :document_id
-                                           :version)))]
+      (let [open-documents (map (juxt :transaction_id
+                                      :document_id
+                                      :version)
+                                (select-documents-for-open-transactions c))]
         (dosync
          (doseq [[transaction-id document-id version] open-documents]
            (alter indexer-state

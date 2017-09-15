@@ -198,5 +198,4 @@
                      :uri canonicalize-uri))))
 
 (def app
-  (-> librarian-api
-      (wrap-canonicalize-uri)))
+  (wrap-canonicalize-uri librarian-api))

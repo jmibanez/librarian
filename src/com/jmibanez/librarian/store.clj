@@ -121,7 +121,7 @@
   (jdbc/with-db-transaction [c config/*datasource*]
     (if-let [row (select-transaction-stub c {:id transaction-id
                                              :context context})]
-      (-> row (stub-row->Transaction)))))
+      (stub-row->Transaction row))))
 
 
 (s/defn start-transaction! :- Transaction

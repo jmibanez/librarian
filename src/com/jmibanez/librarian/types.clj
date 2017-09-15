@@ -125,7 +125,7 @@
                        :name     "::schema"
                        :owner    nil})
 
-    (if-let [type-doc (store/get-document-by-id owning-context type-id)]
+    (when-let [type-doc (store/get-document-by-id owning-context type-id)]
       (if-not (= (:type type-doc)
                  store/schema-type)
         (throw (Exception. "Not a valid type document"))
@@ -133,11 +133,10 @@
         (strict-map->Type (assoc (:document type-doc)
                                  :id (:id type-doc)
                                  :name (:name type-doc)
-                                 :owner (:context type-doc))))
-      nil)))
+                                 :owner (:context type-doc)))))))
 
 (defn find-type-by-name [owning-context name]
-  (if-let [type-doc (store/get-document-by-name owning-context
+  (when-let [type-doc (store/get-document-by-name owning-context
                                                 store/schema-type
                                                 name)]
     (if-not (= (:type type-doc)
@@ -147,17 +146,16 @@
       (strict-map->Type (assoc (:document type-doc)
                                :id (:id type-doc)
                                :name (:name type-doc)
-                               :owner (:context type-doc))))
-    nil))
+                               :owner (:context type-doc))))))
 
 (defn write-type-definition! [type-def]
   (let [transaction (store/start-transaction! (:owner type-def))
-        type-doc (->> {:id       (:id type-def)
-                       :name     (:name type-def)
-                       :context  (:owner type-def)
-                       :state    :new
-                       :document {:definition (:definition type-def)}}
-                      (store/map->Document))]
+        type-doc (store/map->Document {:id       (:id type-def)
+                                       :name     (:name type-def)
+                                       :context  (:owner type-def)
+                                       :state    :new
+                                       :document {:definition
+                                                  (:definition type-def)}})]
     (store/write-document! transaction type-doc)
     (store/commit-transaction! transaction)))
 
@@ -359,15 +357,17 @@
   java.util.UUID
   [context type-id]
 
-  (->> (find-type-by-id context type-id)
-       (compile-type-definition context)))
+  (compile-type-definition context
+                           (find-type-by-id context
+                                            type-id)))
 
 (defmethod compile-type-definition
   String
   [context type-name]
 
-  (->> (find-type-by-name context type-name)
-       (compile-type-definition context)))
+  (compile-type-definition context
+                           (find-type-by-name context
+                                              type-name)))
 
 
 (defmethod compile-type-definition

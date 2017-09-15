@@ -111,28 +111,24 @@
 (s/defn get-query-document-by-id :- QueryDocument
   [context   :- c/Context
    query-id  :- c/Id]
-  (if-let [doc (store/get-document-by-id context query-id)]
+  (when-let [doc (store/get-document-by-id context query-id)]
     (if-not (= query-type
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))
-
-    nil))
+      (:document doc))))
 
 (s/defn get-query-document-by-name :- QueryDocument
   [context    :- c/Context
    query-name :- s/Str]
-  (if-let [doc (store/get-document-by-name context
+  (when-let [doc (store/get-document-by-name context
                                            query-type
                                            query-name)]
     (if-not (= query-type
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))
-
-    nil))
+      (:document doc))))
 
 
 ;; Generators for default queries
@@ -239,8 +235,8 @@
         sort-key  (get-in query-doc [:query :sort])
         sort-sql  (->sort-sql-expression sort-key)
         root-cond (rule->sql-fragment root-rule)
-        sql       (-> base-document-query-map
-                      (sqlgen/where root-cond))]
+        sql       (sqlgen/where base-document-query-map
+                                root-cond)]
     (strict-map->Query {:doc  query-doc
                         :type type
                         :sort sort-sql
@@ -353,8 +349,8 @@
         index-selector [:and [:like :idx.path path-subselector]
                              [:= :idx.value (honeysql/call :jsonb
                                                            (json/generate-string rhs))]]
-        selector-expr (-> index-query-map
-                          (sqlgen/where index-selector))]
+        selector-expr (sqlgen/where index-query-map
+                                    index-selector)]
     [:in :h.id selector-expr]))
 
 (defn path->json-subdocument
