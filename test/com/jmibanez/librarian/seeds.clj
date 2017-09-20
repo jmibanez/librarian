@@ -1,6 +1,7 @@
 (ns com.jmibanez.librarian.seeds
   (:require [clojure.java.jdbc :as jdbc]
             [com.jmibanez.librarian.config :as config]
+            [com.jmibanez.librarian.query :as q]
             [com.jmibanez.librarian.store :as store]
             [com.jmibanez.librarian.store-init :refer [do-init]]))
 
@@ -22,6 +23,9 @@
 (def test-recursive-type-name "TestRecursive")
 
 (def test-doc-id-same-name #uuid "e649ce0d-801d-414c-bdc1-9605ff7090d1")
+
+(def test-query-id #uuid "961882b5-6d56-4126-ac3e-75f6e1b8c9ea")
+
 
 (def test-doc-type-schema
   {:id        test-type
@@ -78,8 +82,20 @@
                             :name     "::string"
                             :next     ["maybe" ["recursive:" test-recursive-type-name]]}}})
 
-(def documents [test-doc-type-schema test-doc test-doc-same-name test-type-doc
-                test-type-ref-doc test-recursive-type-doc])
+(def test-query-doc
+  {:id        test-query-id
+   :name      "test-query"
+   :type      q/query-type
+   :context   test-context
+   :state     :posted
+   :document  {:query {:name "test-query"
+                       :type test-type
+                       :rule nil
+                       :sort "name"}}})
+
+(def documents [test-doc-type-schema test-doc test-doc-same-name
+                test-type-doc test-type-ref-doc
+                test-recursive-type-doc test-query-doc])
 
 (defn seed-test-documents! []
   (let [tx (store/start-transaction! test-context)]

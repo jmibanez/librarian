@@ -11,6 +11,7 @@
             [schema.coerce :as coerce]
             [com.jmibanez.librarian
              [handler :refer [app]]
+             [query :as q]
              [seeds :as seeds]
              [store :as store]
              [test-helpers :refer [GET DELETE POST PUT
@@ -46,6 +47,21 @@
     (-> doc
         (store/map->Document)
         (coerce->Document))))
+
+(defn coerce-to-query-doc [doc]
+  (let [coerce->Document
+        (coerce/coercer Document
+                        (coerce/first-matcher [datetime-matcher
+                                               coerce/json-coercion-matcher]))
+        coerce->QueryDocument
+        (coerce/coercer q/QueryDocument
+                        (coerce/first-matcher [datetime-matcher
+                                               coerce/json-coercion-matcher]))
+        query-doc (coerce->QueryDocument (:document doc))]
+    (-> doc
+        (store/map->Document)
+        (coerce->Document)
+        (assoc :document query-doc))))
 
 
 ;; -------------------------------------
@@ -521,3 +537,41 @@
                           (:id new-doc))
                     :headers context-headers)
                 :status))))
+
+
+(expect seeds/test-query-doc
+        (in (-> (GET (str "/api/doc/"
+                          q/query-type
+                          "/id/"
+                          seeds/test-query-id)
+                    :headers context-headers)
+                parse-body
+                coerce-to-query-doc)))
+
+(expect q/query-type
+        (-> (GET (str "/api/doc/"
+                      q/query-type
+                      "/id/"
+                      seeds/test-query-id)
+                :headers context-headers)
+            parse-body
+            coerce-to-query-doc
+            :type))
+
+
+(expect 200
+        (-> (GET (str "/api/q/" seeds/test-query-id)
+                :headers context-headers)
+            :status))
+
+(expect {:total 1}
+        (in (-> (GET (str "/api/q/" seeds/test-query-id)
+                    :headers context-headers)
+                parse-body)))
+(expect seeds/test-doc
+        (in (-> (GET (str "/api/q/" seeds/test-query-id)
+                    :headers context-headers)
+                parse-body
+                :results
+                first
+                coerce-to-document)))

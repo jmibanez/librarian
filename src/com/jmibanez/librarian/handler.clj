@@ -22,7 +22,10 @@
              [types :as t]])
   (:import [com.jmibanez.librarian.store
             Document
-            Transaction]))
+            Transaction]
+           [com.jmibanez.librarian.query
+            Query
+            QueryPage]))
 
 (timbre/refer-timbre)
 
@@ -132,6 +135,29 @@
           (see-other (str "/api/doc/" type_id "/id/" (:id doc)))
 
           (not-found {:message "Unknown document type/name"}))))
+
+    (context "/q" []
+      (GET "/:query_id" [query_id]
+        :operationId "query"
+        :path-params [query_id :- c/Id]
+        :query-params [{page       :- s/Int 0}
+                       {page_size  :- s/Int 10}
+                       :as params]
+        :return      (s/maybe QueryPage)
+        :tags        ["document" "query"]
+
+        (t/with-type-context x-librarian-context
+          (if-let [q (q/get-query-document-by-id x-librarian-context
+                                                 query_id)]
+            (ok
+             (-> (q/parse-query-document q)
+                 (store/exec (merge (dissoc params :page :page_size)
+                                    {:page      page
+                                     :page-size page_size
+                                     :context   x-librarian-context}))
+                 (dissoc :q)))
+
+            (not-found {:message "Query not found"})))))
 
     (context "/tx" []
 
