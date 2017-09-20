@@ -116,7 +116,8 @@
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))))
+      (:document
+       (t/validate-and-coerce-document context doc)))))
 
 (s/defn get-query-document-by-name :- QueryDocument
   [context    :- c/Context
@@ -128,7 +129,8 @@
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))))
+      (:document
+       (t/validate-and-coerce-document context doc)))))
 
 
 ;; Generators for default queries
