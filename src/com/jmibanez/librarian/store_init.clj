@@ -69,8 +69,9 @@
                         q/query-type-name
                         {:definition {:query {:name "::string"
                                               :type "::uuid"
-                                              :rule "QueryRule"
-                                              :sort ["maybe" "SortCondition"]}}}))
+                                              :rule ["maybe" "QueryRule"]
+                                              :sort ["maybe" ["regexp:"
+                                                              "^(\\w+)(\\.\\w+)*"]]}}}))
 
 (defn do-init []
   (if-not (compare-and-set! *init-transaction*
