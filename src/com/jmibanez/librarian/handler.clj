@@ -108,7 +108,7 @@
                                         :document document
                                         :state state)
                                  (store/map->Document))]
-                    (if-let [err (:error (t/validate-document-against-type
+                    (if-let [err (:error (t/validate-and-coerce-document
                                           x-librarian-context doc))]
                       (bad-request {:message "Invalid document"
                                     :details err})

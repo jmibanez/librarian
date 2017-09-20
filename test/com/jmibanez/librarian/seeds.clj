@@ -18,6 +18,9 @@
 (def test-type-ref-id #uuid "1ececa2b-0bae-478f-80f4-a291deaf2186")
 (def test-type-ref-name "TestDocWithRef")
 
+(def test-recursive-type-id #uuid "a0626679-d2a7-4434-a96c-8c4acd75eb47")
+(def test-recursive-type-name "TestRecursive")
+
 (def test-doc-id-same-name #uuid "e649ce0d-801d-414c-bdc1-9605ff7090d1")
 
 (def test-doc
@@ -57,7 +60,18 @@
                             :referred "TestDoc"}}})
 
 
-(def documents [test-doc test-doc-same-name test-type-doc test-type-ref-doc])
+(def test-recursive-type-doc
+  {:id        test-recursive-type-id
+   :name      test-recursive-type-name
+   :type      store/schema-type
+   :context   test-context
+   :state     :posted
+   :document  {:definition {:id       "::string"
+                            :name     "::string"
+                            :next     ["maybe" ["recursive:" test-recursive-type-name]]}}})
+
+(def documents [test-doc test-doc-same-name test-type-doc test-type-ref-doc
+                test-recursive-type-doc])
 
 (defn seed-test-documents! []
   (let [tx (store/start-transaction! test-context)]

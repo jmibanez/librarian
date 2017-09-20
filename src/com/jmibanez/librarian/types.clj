@@ -103,16 +103,18 @@
 
 
 (declare resolve-type-ref)
-(s/defn validate-against-named-type :- s/Any
+(s/defn validate-and-coerce-to-type :- s/Any
   [owning-context :- c/Context
    type-name      :- s/Str
    v              :- s/Any]
   (let [schema-def (resolve-type-ref owning-context
-                                     type-name)]
-    (s/validate schema-def v)))
+                                     type-name)
+        coercer    (coerce/coercer schema-def
+                                   coerce/json-coercion-matcher)]
+    (coercer v)))
 
-(s/defn validate-document-against-type :- (s/cond-pre Document
-                                                      {:error s/Any})
+(s/defn validate-and-coerce-document :- (s/cond-pre Document
+                                                    {:error s/Any})
   [owning-context :- c/Context
    document       :- Document]
   (let [type-id    (:type document)
@@ -120,10 +122,11 @@
                                      type-id)
         coercer    (coerce/coercer schema-def
                                    coerce/json-coercion-matcher)
-        doc        (:document document)]
-    (if-let [err (s/check schema-def doc)]
-      {:error err}
-      (assoc document :document (coercer doc)))))
+        doc        (:document document)
+        doc-coerce (coercer doc)]
+    (if (:error doc-coerce)
+      doc-coerce
+      (assoc document :document doc-coerce))))
 
 (defn find-type-by-id [owning-context type-id]
   (if (= store/schema-type type-id)
