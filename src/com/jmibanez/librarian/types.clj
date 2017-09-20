@@ -334,12 +334,23 @@
                             rest first))
 
             (= "recursive:" first-elem)
-            (apply s/recursive (compile-type-definition context
-                                                        this-type-name
-                                                        (rest type-sequence)))))
+            (s/recursive (future (compile-type-def context this-type-name
+                                                   (-> type-sequence
+                                                       rest first))))))
 
      ;; Default: Just compile each element
      (mapv compiler type-sequence))))
+
+
+(defn create-conditional [context type-name
+                          cond-pairs]
+  (debug "create:" type-name cond-pairs)
+  (apply s/conditional
+         (flatten (for [[cond-key type-tail] cond-pairs]
+                    [#(contains? % (keyword cond-key))
+                     (compile-type-def context type-name
+                                       (spy :debug type-tail))]))))
+
 
 (defmethod compile-type-def
   clojure.lang.APersistentMap
