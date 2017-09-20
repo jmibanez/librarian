@@ -189,8 +189,6 @@
   store/Executable
   (execute-this
     [q conn params]
-    "Execute a Query object using the given connection, with the given
-    parameters."
     (let [{:keys [page page-size]
            :as   params} params
           type (:type q)
