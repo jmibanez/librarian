@@ -4,7 +4,7 @@
             [com.jmibanez.librarian.store :as store]
             [com.jmibanez.librarian.store-init :refer [do-init]]))
 
-(def test-type #uuid "143246e3-c0b7-59e3-ae17-29b99ff0d5ac")
+(def test-type #uuid "ed0e8b73-b8f3-414a-945b-35ee84a98127")
 (def test-other-type #uuid "13068b05-bc96-4ed6-9a5f-d49936da40da")
 
 (def test-context #uuid "008dc16e-f7d9-45ce-a043-e482919561c1")
@@ -22,6 +22,14 @@
 (def test-recursive-type-name "TestRecursive")
 
 (def test-doc-id-same-name #uuid "e649ce0d-801d-414c-bdc1-9605ff7090d1")
+
+(def test-doc-type-schema
+  {:id        test-type
+   :name      "test-type"
+   :type      store/schema-type
+   :context   test-context
+   :state     :posted
+   :document  {:definition "::any"}})
 
 (def test-doc
   {:id        test-doc-id
@@ -70,8 +78,8 @@
                             :name     "::string"
                             :next     ["maybe" ["recursive:" test-recursive-type-name]]}}})
 
-(def documents [test-doc test-doc-same-name test-type-doc test-type-ref-doc
-                test-recursive-type-doc])
+(def documents [test-doc-type-schema test-doc test-doc-same-name test-type-doc
+                test-type-ref-doc test-recursive-type-doc])
 
 (defn seed-test-documents! []
   (let [tx (store/start-transaction! test-context)]
