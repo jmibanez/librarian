@@ -108,7 +108,7 @@
 
     (create-query-document! context transaction query-doc)))
 
-(s/defn get-query-document-by-id :- QueryDocument
+(s/defn get-query-document-by-id :- (s/maybe QueryDocument)
   [context   :- c/Context
    query-id  :- c/Id]
   (when-let [doc (store/get-document-by-id context query-id)]
@@ -119,7 +119,7 @@
       (:document
        (t/validate-and-coerce-document context doc)))))
 
-(s/defn get-query-document-by-name :- QueryDocument
+(s/defn get-query-document-by-name :- (s/maybe QueryDocument)
   [context    :- c/Context
    query-name :- s/Str]
   (when-let [doc (store/get-document-by-name context
