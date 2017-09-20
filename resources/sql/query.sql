@@ -1,6 +1,6 @@
 -- :name query-document-full :? :*
 SELECT
-  h.id, h.type, h.name, h.context, d.version,
+  h.id, h.type, h.name, h.context,
   h.date_created,
   d.document, d.state, d.date_modified AS date_last_modified
 FROM
