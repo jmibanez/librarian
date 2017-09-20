@@ -1,6 +1,6 @@
-(ns com.jmibanez.librarian.bootstrap
-  "System bootstrap. Provides functions for ensuring core documents
-  and types exist in the backing database."
+(ns com.jmibanez.librarian.store-init
+  "System init. Provides functions for ensuring core documents and types
+  exist in the backing database."
 
   (:require [clj-uuid :as uuid]
             [com.jmibanez.librarian
@@ -8,7 +8,7 @@
              [store :as store]]))
 
 
-(def ^:dynamic *bootstrap-transaction* (atom nil))
+(def ^:dynamic *init-transaction* (atom nil))
 
 
 (defn create-system-doc
@@ -29,21 +29,21 @@
    `(when (nil? (store/get-document-by-id nil ~id))
       (->> (create-system-doc ~id ~name ~type ~doc)
            (store/map->Document)
-           (store/write-document! @*bootstrap-transaction*)))))
+           (store/write-document! @*init-transaction*)))))
 
 (defmacro ensure-system-schema [id name schema-def]
   `(when (nil? (store/get-document-by-id nil ~id))
      (->> (create-system-doc ~id ~name store/schema-type ~schema-def)
           (store/map->Document)
-          (store/write-document! @*bootstrap-transaction*))))
+          (store/write-document! @*init-transaction*))))
 
-(defn bootstrap-root-type []
+(defn init-root-type []
   (ensure-system-document store/root-type
                           store/root-type-name
                           {:name "Root Document" :system "librarian1"}))
 
 
-(defn bootstrap-schemas []
+(defn init-schemas []
 
   ;; XXX This may change in the future to self-describe schema
   (ensure-system-document store/schema-type
@@ -72,20 +72,15 @@
                                               :rule "QueryRule"
                                               :sort ["maybe" "SortCondition"]}}}))
 
-
-;; (defn bootstrap-queries []
-;; )
-
-(defn do-bootstrap []
-  (if-not (compare-and-set! *bootstrap-transaction*
+(defn do-init []
+  (if-not (compare-and-set! *init-transaction*
                             nil (store/start-transaction! (uuid/null)))
-    (throw (Exception. "Previous boostrap transaction already initiated.")))
+    (throw (Exception. "Previous init transaction already initiated.")))
 
-  (bootstrap-root-type)
+  (init-root-type)
 
-  (bootstrap-schemas)
-  ;; (bootstrap-queries)
+  (init-schemas)
 
-  (store/commit-transaction! @*bootstrap-transaction*)
-  (compare-and-set! *bootstrap-transaction*
-                    @*bootstrap-transaction* nil))
+  (store/commit-transaction! @*init-transaction*)
+  (compare-and-set! *init-transaction*
+                    @*init-transaction* nil))

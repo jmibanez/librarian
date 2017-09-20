@@ -1,9 +1,8 @@
 (ns com.jmibanez.librarian.seeds
   (:require [clojure.java.jdbc :as jdbc]
-            [com.jmibanez.librarian
-             [bootstrap :refer [do-bootstrap]]
-             [config :as config]
-             [store :as store]]))
+            [com.jmibanez.librarian.config :as config]
+            [com.jmibanez.librarian.store :as store]
+            [com.jmibanez.librarian.store-init :refer [do-init]]))
 
 (def test-type #uuid "143246e3-c0b7-59e3-ae17-29b99ff0d5ac")
 (def test-other-type #uuid "13068b05-bc96-4ed6-9a5f-d49936da40da")
@@ -71,7 +70,7 @@
         (store/commit-transaction! tx)))))
 
 (defn populate-db []
-  (do-bootstrap)
+  (do-init)
   (seed-test-documents!))
 
 (defn fixture [test]
