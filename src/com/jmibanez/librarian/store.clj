@@ -8,7 +8,7 @@
                                         >!! >! <!! <!
                                         mult sliding-buffer]]
             [overtone.at-at :as at-at]
-            [digest]
+            [pandect.algo.sha256 :refer [sha256-bytes]]
             [camel-snake-kebab.core :refer [->kebab-case]]
             [camel-snake-kebab.extras :refer [transform-keys]]
             [schema.core :as s]
@@ -25,7 +25,7 @@
              [util :refer [defcacheable
                            canonical-representation]]])
   (:import org.postgresql.util.PGobject
-           java.util.Date))
+           [java.util Base64 Date]))
 
 
 (timbre/refer-timbre)
@@ -42,6 +42,11 @@
 (defprotocol VersionedObject
   (version  [this]))
 
+(def base64-encoder (Base64/getUrlEncoder))
+(defn- base64-string [^bytes b]
+  (-> (.encodeToString base64-encoder b)
+      (subs 0 43)))
+
 (s/defrecord Document [id                 :- c/Id
                        name               :- (s/maybe s/Str)
                        type               :- (s/maybe c/Id)
@@ -55,7 +60,9 @@
     (let [state     (clojure.core/name state)
           doc       (canonical-representation document)
           json-doc  (json/generate-string doc)]
-      (spy :trace (digest/sha-256 (str state json-doc))))))
+      (spy :trace (-> (str state json-doc)
+                      (sha256-bytes)
+                      (base64-string))))))
 
 
 (def TransactionState (s/enum :started

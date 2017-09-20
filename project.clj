@@ -40,7 +40,7 @@
                  [camel-snake-kebab "0.4.0"]
                  [clj-time "0.14.0"]
                  [overtone/at-at "1.2.0"]
-                 [digest "1.4.5"]
+                 [pandect "0.6.1"]
                  [com.zaxxer/HikariCP "2.6.3"]
                  [hikari-cp "1.7.6"]
                  [com.layerware/hugsql "0.4.7"]

@@ -14,7 +14,7 @@
          :context nil
          :document {:name "Root Document" :system "librarian1"}}
         (in (sut/get-document-by-id nil sut/root-type)))
-(expect "d7dab10e905c25d3f11f9349f29f63eb632c71486a99fd092db2a0e8b9bba341"
+(expect "19qxDpBcJdPxH5NJ8p9j62MscUhqmf0JLbKg6Lm7o0E"
         (-> (sut/get-document-by-id nil sut/root-type)
             (sut/version)))
 
@@ -25,7 +25,7 @@
          :context nil
          :document {:definition "::any"}}
         (in (sut/get-document-by-id nil sut/schema-type)))
-(expect "b23c5525b96367b9264546da6ebfcc3abba121d26621faea6e4e592e2e600400"
+(expect "sjxVJbljZ7kmRUbabr_MOruhIdJmIfrqbk5ZLi5gBAA"
         (-> (sut/get-document-by-id nil sut/schema-type)
             (sut/version)))
 
@@ -37,7 +37,7 @@
          :context nil
          :document {:name "Root Document" :system "librarian1"}}
         (in (sut/get-document-by-name nil sut/root-type sut/root-type-name)))
-(expect "d7dab10e905c25d3f11f9349f29f63eb632c71486a99fd092db2a0e8b9bba341"
+(expect "19qxDpBcJdPxH5NJ8p9j62MscUhqmf0JLbKg6Lm7o0E"
         (-> (sut/get-document-by-name nil sut/root-type sut/root-type-name)
             (sut/version)))
 
@@ -48,7 +48,7 @@
          :context nil
          :document {:definition "::any"}}
         (in (sut/get-document-by-name nil sut/root-type sut/schema-type-name)))
-(expect "b23c5525b96367b9264546da6ebfcc3abba121d26621faea6e4e592e2e600400"
+(expect "sjxVJbljZ7kmRUbabr_MOruhIdJmIfrqbk5ZLi5gBAA"
         (-> (sut/get-document-by-name nil sut/root-type sut/schema-type-name)
             (sut/version)))
 
@@ -101,7 +101,7 @@
 
 
 ;; Should return newly written document with next version
-(expect "31f6d5f6a551d0449d9038388ae635227ac3385792d9633820fa281d69577eda"
+(expect "MfbV9qVR0ESdkDg4iuY1InrDOFeS2WM4IPooHWlXfto"
         (with-storage-transaction
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context
@@ -137,7 +137,7 @@
 
 ;; Committing the storage transaction should persist document changes,
 ;; including new version
-(expect "31f6d5f6a551d0449d9038388ae635227ac3385792d9633820fa281d69577eda"
+(expect "MfbV9qVR0ESdkDg4iuY1InrDOFeS2WM4IPooHWlXfto"
         (with-storage-transaction
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context
@@ -174,7 +174,7 @@
                 (sut/commit-transaction! tx)
                 (sut/get-document-by-id seeds/test-context
                                         seeds/test-doc-id)))))
-(expect "01d877fa590fb2c3fccbb3ffcb87f7b19935d3d8a4d41d4067950f184402250b"
+(expect "Adh3-lkPssP8y7P_y4f3sZk109ik1B1AZ5UPGEQCJQs"
         (with-storage-transaction
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context
@@ -238,7 +238,7 @@
             (-> (sut/get-document-by-id seeds/test-context seeds/test-doc-id)
                 (sut/version)))))
 
-(expect "31f6d5f6a551d0449d9038388ae635227ac3385792d9633820fa281d69577eda"
+(expect "MfbV9qVR0ESdkDg4iuY1InrDOFeS2WM4IPooHWlXfto"
         (with-storage-transaction
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context
@@ -339,7 +339,7 @@
                                                             "::integer"))]
                 (sut/commit-transaction! tx)))))
 
-(expect "26d74f660af7c4c2c8e79e2c406980e8c407986def55399978a4c95d15f3e094"
+(expect "JtdPZgr3xMLI554sQGmA6MQHmG3vVTmZeKTJXRXz4JQ"
         (with-storage-transaction
           [tx seeds/test-context]
           (let [doc-record (sut/get-document-by-id seeds/test-context

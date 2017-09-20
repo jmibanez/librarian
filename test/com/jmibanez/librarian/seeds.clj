@@ -11,7 +11,7 @@
 (def test-context #uuid "008dc16e-f7d9-45ce-a043-e482919561c1")
 (def test-doc-id #uuid "34a79262-f324-4911-ac33-8bb62f020d09")
 (def test-doc-name "Foo")
-(def test-doc-root-version "d22b30f48fe55d0633be7761aadb7b5e631830644dc9efaa3b74fd55d943c34e")
+(def test-doc-root-version "0isw9I_lXQYzvndhqtt7XmMYMGRNye-qO3T9VdlDw04")
 
 (def test-type-id #uuid "60053ded-32e9-48ee-b6b1-d546b3c071b3")
 (def test-type-name "TestDoc")
