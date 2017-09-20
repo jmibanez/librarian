@@ -29,6 +29,10 @@
   [(s/one (s/eq "recursive:") "recurse-key")
    (s/one s/Str "type-recurse")])
 
+(s/defschema TypeRegularExpression
+  [(s/one (s/eq "regexp:") "regexp-key")
+   (s/one s/Str "regexp")])
+
 (s/defschema TypeSpecialVector
   (s/conditional #(contains? sequence-keys (first %))
                  [(s/one (apply s/enum (keys sequence-keys)) "key") (s/recursive #'TypeDefinition)]
@@ -38,6 +42,9 @@
 
                  #(= "conditional:" (first %))
                  TypeConditional
+
+                 #(= "regexp:"  (first %))
+                 TypeRegularExpression
 
                  #(= "recursive:" (first %))
                  TypeRecursive))
@@ -320,6 +327,11 @@
             ;; first element)
             (= "conditional:" first-elem)
             (create-conditional context this-type-name (rest type-sequence))
+
+            ;; ... is a regular expression?
+            (= "regexp:" first-elem)
+            (re-pattern (-> type-sequence
+                            rest first))
 
             (= "recursive:" first-elem)
             (apply s/recursive (compile-type-definition context
