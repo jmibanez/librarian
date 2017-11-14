@@ -29,6 +29,10 @@
   [(s/one (s/eq "recursive:") "recurse-key")
    (s/one s/Str "type-recurse")])
 
+(s/defschema TypeRegularExpression
+  [(s/one (s/eq "regexp:") "regexp-key")
+   (s/one s/Str "regexp")])
+
 (s/defschema TypeSpecialVector
   (s/conditional #(contains? sequence-keys (first %))
                  [(s/one (apply s/enum (keys sequence-keys)) "key") (s/recursive #'TypeDefinition)]
@@ -38,6 +42,9 @@
 
                  #(= "conditional:" (first %))
                  TypeConditional
+
+                 #(= "regexp:"  (first %))
+                 TypeRegularExpression
 
                  #(= "recursive:" (first %))
                  TypeRecursive))
@@ -96,16 +103,18 @@
 
 
 (declare resolve-type-ref)
-(s/defn validate-against-named-type :- s/Any
+(s/defn validate-and-coerce-to-type :- s/Any
   [owning-context :- c/Context
    type-name      :- s/Str
    v              :- s/Any]
   (let [schema-def (resolve-type-ref owning-context
-                                     type-name)]
-    (s/validate schema-def v)))
+                                     type-name)
+        coercer    (coerce/coercer schema-def
+                                   coerce/json-coercion-matcher)]
+    (coercer v)))
 
-(s/defn validate-document-against-type :- (s/cond-pre Document
-                                                      {:error s/Any})
+(s/defn validate-and-coerce-document :- (s/cond-pre Document
+                                                    {:error s/Any})
   [owning-context :- c/Context
    document       :- Document]
   (let [type-id    (:type document)
@@ -113,10 +122,11 @@
                                      type-id)
         coercer    (coerce/coercer schema-def
                                    coerce/json-coercion-matcher)
-        doc        (:document document)]
-    (if-let [err (s/check schema-def doc)]
-      {:error err}
-      (assoc document :document (coercer doc)))))
+        doc        (:document document)
+        doc-coerce (coercer doc)]
+    (if (:error doc-coerce)
+      doc-coerce
+      (assoc document :document doc-coerce))))
 
 (defn find-type-by-id [owning-context type-id]
   (if (= store/schema-type type-id)
@@ -321,13 +331,29 @@
             (= "conditional:" first-elem)
             (create-conditional context this-type-name (rest type-sequence))
 
+            ;; ... is a regular expression?
+            (= "regexp:" first-elem)
+            (re-pattern (-> type-sequence
+                            rest first))
+
             (= "recursive:" first-elem)
-            (apply s/recursive (compile-type-definition context
-                                                        this-type-name
-                                                        (rest type-sequence)))))
+            (s/recursive (future (compile-type-def context this-type-name
+                                                   (-> type-sequence
+                                                       rest first))))))
 
      ;; Default: Just compile each element
      (mapv compiler type-sequence))))
+
+
+(defn create-conditional [context type-name
+                          cond-pairs]
+  (debug "create:" type-name cond-pairs)
+  (apply s/conditional
+         (flatten (for [[cond-key type-tail] cond-pairs]
+                    [#(contains? % (keyword cond-key))
+                     (compile-type-def context type-name
+                                       (spy :debug type-tail))]))))
+
 
 (defmethod compile-type-def
   clojure.lang.APersistentMap

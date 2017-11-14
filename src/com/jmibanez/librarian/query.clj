@@ -108,7 +108,7 @@
 
     (create-query-document! context transaction query-doc)))
 
-(s/defn get-query-document-by-id :- QueryDocument
+(s/defn get-query-document-by-id :- (s/maybe QueryDocument)
   [context   :- c/Context
    query-id  :- c/Id]
   (when-let [doc (store/get-document-by-id context query-id)]
@@ -116,9 +116,10 @@
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))))
+      (:document
+       (t/validate-and-coerce-document context doc)))))
 
-(s/defn get-query-document-by-name :- QueryDocument
+(s/defn get-query-document-by-name :- (s/maybe QueryDocument)
   [context    :- c/Context
    query-name :- s/Str]
   (when-let [doc (store/get-document-by-name context
@@ -128,7 +129,8 @@
                (:type doc))
       (throw (Exception. "Not a valid query document"))
 
-      (:document doc))))
+      (:document
+       (t/validate-and-coerce-document context doc)))))
 
 
 ;; Generators for default queries
@@ -187,8 +189,6 @@
   store/Executable
   (execute-this
     [q conn params]
-    "Execute a Query object using the given connection, with the given
-    parameters."
     (let [{:keys [page page-size]
            :as   params} params
           type (:type q)

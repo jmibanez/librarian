@@ -71,7 +71,7 @@
 (expect {:name seeds/test-doc-name}
         (in (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)))
-(expect {:type sut/schema-type}
+(expect {:type seeds/test-type}
         (in (sut/get-document-by-id seeds/test-context
                                     seeds/test-doc-id)))
 (expect seeds/test-doc-root-version
